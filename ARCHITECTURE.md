@@ -49,6 +49,7 @@ class MarketDataProvider(Protocol):
 
 **Implementations:**
 1. `HistoricalReplayProvider` — real yfinance OHLCV for ~30-50 NSE stocks, replayed/perturbed on a clock tick. Default and only provider — disclosed simulation.
+   - Phase 1 implementation (`backend/app/providers/historical_replay.py`): a `ReplayClock` holds a single explicit step index, injected rather than wall-clock-driven, so replay is deterministic and testable. All tickers advance in lockstep on that one shared index. `get_ticks()` returns each requested ticker's historical observation at the current step, re-tagged `source="replay_simulated"` — the underlying price/volume values are always real historical data loaded from `price_ticks` (`source="real_historical"`), never randomly generated. No NSE trading-hours modeling yet; that's a later phase.
 2. `FaultInjectingProvider` — **decorator around #1**, not a separate path. `POST /admin/fault {mode: outage|stale|recover}`:
    - `outage` → `get_ticks()` raises / `get_status()` → `UNAVAILABLE`
    - `stale` → freezes the clock the replay provider reads from; `age_seconds` grows naturally past thresholds — real freshness logic reports it, not a fake label
@@ -81,12 +82,23 @@ signalDigest/
 ├── .env.example
 ├── backend/
 │   ├── requirements.txt
+│   ├── pytest.ini
 │   ├── migrations/
 │   │   └── 001_init.sql     # numbered SQL files applied manually via `psql -f`, no migration tool for this build
+│   ├── scripts/
+│   │   ├── seed_historical_data.py   # one-off manual backfill: yfinance -> tickers/price_ticks -> baselines
+│   │   └── smoke_test_replay.py      # one-off manual check: replay real seeded data, confirm source='replay_simulated'
+│   ├── tests/                # pytest + pytest-asyncio; DB-backed tests run against real local Postgres
 │   └── app/
 │       ├── main.py          # FastAPI app + CORS + lifespan (DB pool)
 │       ├── config.py        # pydantic-settings, reads .env
 │       ├── db.py            # asyncpg pool
+│       ├── data/
+│       │   ├── tickers.py   # fixed TICKER_SECTORS universe + to_nse_symbol()
+│       │   └── baselines.py # rolling-window baseline computation
+│       ├── providers/
+│       │   ├── base.py               # Tick, ProviderStatus, MarketDataProvider protocol
+│       │   └── historical_replay.py  # HistoricalReplayProvider + ReplayClock
 │       └── routers/
 │           └── health.py    # GET /health (real SELECT 1)
 └── frontend/                # Next.js (App Router) + Tailwind, standard create-next-app layout
