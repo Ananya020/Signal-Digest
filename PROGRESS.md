@@ -7,9 +7,9 @@ Signal Digest — see PRODUCT.md for full reasoning. Smart watchlist, per-instru
 - [ ] Planning complete: Stages 1-4 done (product direction, scoring engine, state machine, architecture/schema, reliability review) — see PRODUCT.md, ARCHITECTURE.md, DATA_MODEL.md, RELIABILITY.md
 - [ ] Stage 5 (frontend UX for 9 screens, exact demo script) — pending
 - [ ] Stage 6 (feature prioritization, 72h execution plan, testing strategy, repo structure) — pending
-- [ ] Repo scaffolded
+- [x] Repo scaffolded (Phase 0: backend FastAPI skeleton, frontend Next.js skeleton, docker-compose for Postgres)
 - [ ] Backend: data provider abstraction (HistoricalReplayProvider + FaultInjectingProvider)
-- [ ] Backend: schema migrated (including severity_rank fix)
+- [x] Backend: schema migrated (including severity_rank fix) — `backend/migrations/001_init.sql`, applied and verified locally
 - [ ] Backend: scoring engine (z-score, volume ratio, sector tag)
 - [ ] Backend: digest API + ETag/ack flow
 - [ ] Backend: evidence endpoint ("show your work")
@@ -24,11 +24,11 @@ Signal Digest — see PRODUCT.md for full reasoning. Smart watchlist, per-instru
 
 ## Next steps (update this first, every session)
 1. Finish Stage 5 (frontend UX + exact demo script) — quick pass, don't over-invest more planning time
-2. Scaffold repo per ARCHITECTURE.md folder structure (once decided)
-3. `.gitignore` + `.env.example` before first commit
+2. Build data provider abstraction (HistoricalReplayProvider) + baseline computation
+3. Digest API + ETag/ack flow, per DATA_MODEL.md's severity-escalation transaction rule
 
 ## Recent changes
-_(log here as you go — one line per session, e.g. "Sep 5: scaffolded FastAPI project, added provider abstraction skeleton")_
+- Sep 4: Phase 0 scaffolded — backend (FastAPI, asyncpg, raw SQL, requirements.txt), frontend (Next.js/Tailwind via create-next-app), docker-compose (Postgres only), schema migrated via `backend/migrations/001_init.sql` (`psql -f`, no migration tool). `/health` verified locally: real `SELECT 1` round-trip, returns 200.
 
 ## Known bugs / roadblocks
 _(none yet — log here as they appear, don't let them live only in chat history)_

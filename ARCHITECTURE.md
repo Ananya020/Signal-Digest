@@ -75,4 +75,19 @@ This must exercise the exact same code path a real outage would hit — that's w
 **Optional LLM explanation layer, if built:** `POST /internal/phrase` takes `{z_score, volume_ratio, sector_relative}`, returns a one-line string. Pure post-processing — never touches `flags` decision logic, trivially swappable for the deterministic template fallback.
 
 ## Folder structure
-_(update this section once scaffolded — keep it current, not aspirational)_
+```
+signalDigest/
+├── docker-compose.yml       # Postgres only — backend/frontend run locally, not containerized
+├── .env.example
+├── backend/
+│   ├── requirements.txt
+│   ├── migrations/
+│   │   └── 001_init.sql     # numbered SQL files applied manually via `psql -f`, no migration tool for this build
+│   └── app/
+│       ├── main.py          # FastAPI app + CORS + lifespan (DB pool)
+│       ├── config.py        # pydantic-settings, reads .env
+│       ├── db.py            # asyncpg pool
+│       └── routers/
+│           └── health.py    # GET /health (real SELECT 1)
+└── frontend/                # Next.js (App Router) + Tailwind, standard create-next-app layout
+```
