@@ -73,6 +73,18 @@ class HistoricalReplayProvider:
     def advance(self) -> int:
         return self.clock.advance()
 
+    def get_previous_price(self, ticker: str) -> float | None:
+        """The close immediately preceding the current replay step — used by
+        the scoring pipeline (Phase 4) to compute today's return without
+        reaching into `history` directly, so it works the same way whether
+        called on this provider or through FaultInjectingProvider's
+        delegation. None if there's no prior day (step 0) or no data."""
+        step = self.clock.current()
+        series = self.history.get(ticker, [])
+        if step == 0 or step - 1 >= len(series):
+            return None
+        return series[step - 1].price
+
     def get_status(self) -> ProviderStatus:
         step = self.clock.current()
         max_len = max((len(s) for s in self.history.values()), default=0)

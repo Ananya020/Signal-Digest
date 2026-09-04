@@ -71,9 +71,13 @@ flag_ack (
 )
 
 provider_state (
-  id INT PRIMARY KEY DEFAULT 1, mode TEXT NOT NULL DEFAULT 'normal', frozen_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+  id INT PRIMARY KEY DEFAULT 1, mode TEXT NOT NULL DEFAULT 'normal', frozen_at TIMESTAMPTZ,
+  last_successful_fetch TIMESTAMPTZ,  -- added migrations/002 (Phase 4 correction, see below)
+  updated_at TIMESTAMPTZ
 )
 ```
+
+**Correction made during Phase 4 implementation (2026-09-04):** `last_successful_fetch` was added after an empirically-verified bug — freshness state depends entirely on `age = now - last_successful_fetch` (`frozen_at` is cosmetic, only used in status `detail`), so the original schema (mode/frozen_at only) meant a process restart during a genuine `stale` fault reset the age clock and incorrectly reported `LIVE` immediately after. `outage` was unaffected (its `UNAVAILABLE` state never consults `age_seconds`). See PROGRESS.md / ARCHITECTURE.md for the fix and verification.
 
 ## Why each table exists
 - `price_ticks` — immutable source of truth, needed to recompute anything after fault-recovery.

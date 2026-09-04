@@ -128,10 +128,22 @@ async def test_ticker_2(db_pool):
 async def client(db_pool):
     """httpx AsyncClient wired directly to the FastAPI app via ASGI
     transport (no real server process), with the app's own lifespan
-    (DB pool connect/disconnect) run around it."""
+    (DB pool connect/disconnect, provider construction) run around it.
+
+    The live background scheduler is disabled for this fixture — tests
+    exercise scoring via `run_scoring_cycle` directly (deterministic, no
+    race against a real 5s-interval job), never through the actual
+    APScheduler loop. `app.state.provider` is still fully constructed and
+    usable (digest/status endpoints work normally)."""
+    from app.config import settings
     from app.main import app
 
-    async with app.router.lifespan_context(app):
-        transport = httpx.ASGITransport(app=app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
-            yield ac
+    previous = settings.scheduler_enabled
+    settings.scheduler_enabled = False
+    try:
+        async with app.router.lifespan_context(app):
+            transport = httpx.ASGITransport(app=app)
+            async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
+                yield ac
+    finally:
+        settings.scheduler_enabled = previous

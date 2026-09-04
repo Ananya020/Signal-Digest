@@ -19,6 +19,12 @@ Reference for implementation and for Q&A answers. Do NOT try to narrate all of t
 | 13 | Fault endpoint hit outside demo | `DEMO_MODE` env flag | Endpoint doesn't exist (404/403) if unset | N/A | Must be structurally impossible outside demo builds |
 | 14 | Ack references a deleted/superseded flag | Existence check before insert | Partial success returned, bad id ignored | N/A | Silent full-request failure would be worse UX than partial success |
 
+## Demo note: same-key severity escalation is architecturally deterministic (Phase 4 finding)
+
+Scenario #3 above ("severity escalates mid-session") describes a real intraday risk: a live feed delivers multiple ticks through a single trading session, and each new tick can change that day's return-so-far, so a flag genuinely can escalate as the session progresses. This project's `HistoricalReplayProvider` replays one close per trading day, not intraday ticks — so `(ticker, trading_day, signal_type)` is scored from a fixed close price against a fixed (static, Phase 2) baseline, and re-scoring that same trading day at a later wall-clock time always reproduces the identical z_score and severity. Verified directly while building Phase 4's live demo: freezing replay (`stale`), acking a flag, recovering, and letting the scheduler naturally resume never escalated anything on its own, because neither input to that day's score had changed.
+
+To make the ack-bust mechanism (scenario #3's actual defense) observable live within a 5-minute demo window despite this, `backend/scripts/seed_demo_escalation_precondition.py` seeds a single flag at an artificially low severity for a real, not-yet-reached trading day and acks it — after independently verifying, using the real unmodified scoring functions, what that day's true severity will be, and refusing to seed if the placeholder wouldn't actually be superseded. Everything downstream (the correction, the ack-bust, the new severity) is computed for real by the unmodified scoring/upsert code from real historical data, fired by the live scheduler — only the starting (pre-empt) severity is constructed. A production deployment against a genuinely intraday feed would not need this — escalation would occur organically as scenario #3 describes.
+
 ## Security review (Tier 1 hackathon scope — see CLAUDE.md, do not over-build)
 - Single JWT demo account, 24h expiry. No multi-tenant RBAC needed.
 - Every watchlist-scoped endpoint checks `watchlist.user_id == current_user.id` — the one authz check that actually matters here.

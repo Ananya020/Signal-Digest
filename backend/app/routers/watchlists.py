@@ -82,8 +82,15 @@ async def get_digest(
     if if_none_match and _normalize_if_none_match(if_none_match) == aggregate_hash:
         return Response(status_code=304, headers={"ETag": _quoted(aggregate_hash)})
 
+    provider = request.app.state.provider
+    provider_status = provider.get_status()
+
+    # UNAVAILABLE: still return the last-known unacked flags (never empty
+    # the response), but never compute/fabricate anything new — the freshness
+    # field + detail make it explicit that no new scoring occurred this cycle.
     return {
-        "freshness": "LIVE",  # Phase 4 wires real provider status / fault injection
+        "freshness": provider_status.state,
+        "detail": provider_status.detail,
         "flags": [_serialize_flag(row) for row in rows],
     }
 
