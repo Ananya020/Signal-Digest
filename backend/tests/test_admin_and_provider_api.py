@@ -78,6 +78,7 @@ async def test_provider_status_returns_live_shape(client):
     assert "age_seconds" in body
     assert "last_successful_fetch" in body
     assert "detail" in body
+    assert isinstance(body["demo_mode"], bool)  # Phase 5: frontend gates the fault-injection control on this
 
 
 async def test_digest_reflects_real_provider_status(client, db_pool, demo_watchlist, test_ticker):

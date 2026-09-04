@@ -76,19 +76,25 @@ This exercises the exact same code path a real outage would hit — that's what 
 
 | Method | Path | Purpose | Notes |
 |---|---|---|---|
+| GET | `/watchlists` | list current demo user's watchlists | Phase 5 implemented (`app/routers/watchlists.py`). Ownership-scoped via `WHERE user_id = $1` — same pattern as every other watchlist endpoint. |
 | POST | `/watchlists` | create watchlist | |
 | POST | `/watchlists/{id}/items` | add ticker | idempotent upsert on PK |
 | DELETE | `/watchlists/{id}/items/{ticker}` | remove ticker | |
+| GET | `/tickers` | list the fixed ticker universe | Phase 5 implemented (`app/routers/tickers.py`). `{ticker, name, sector}[]`. Universe metadata, not user data — no auth scoping. |
 | GET | `/watchlists/{id}/digest` | current flags + freshness state | Returns `ETag` header = aggregate hash; client sends `If-None-Match` → 304 if unchanged. Phase 3 implemented, Phase 4 wired real freshness — `freshness` field reflects the live `ProviderStatus.state` (`app/routers/watchlists.py`), no longer hardcoded. When `UNAVAILABLE`, still returns the last-known unacked flags (never empties the response) with `detail` making clear no new scoring occurred. |
 | POST | `/watchlists/{id}/ack` | ack specific flag IDs | `{flag_ids: [...]}` — no client-supplied hash accepted; server always recomputes authoritative hash, never trusts client's. Phase 3 implemented; `ignored` entries are `{id, reason}` objects (Phase 3 correction). |
 | GET | `/tickers/{ticker}/evidence?flag_id=` | "show your work" data | `{ticker, window_start, window_end, mean_return, stdev_return, points: [{date, return, price}], flagged_point: {date, return, z_score}}` — frontend draws directly, no client-side stats recomputation. Phase 3 implemented (`app/services/evidence.py`); `mean_return`/`stdev_return`/`points` come from the exact same baseline row (`load_latest_baseline`) that produced the flag's stored `z_score` — not independently recomputed — so the displayed band and the displayed z_score are always algebraically consistent (reproducible within floating-point tolerance, tested). The flagged day's own return is fetched separately and may fall outside the plotted `points` window, since the baseline is static (Phase 2). |
-| GET | `/provider/status` | current freshness state | Phase 4 implemented (`app/routers/provider_status.py`). `age_seconds` computed live from real wall-clock time on every call, never cached. Polled for the freshness banner (Phase 5). |
+| GET | `/provider/status` | current freshness state | Phase 4 implemented (`app/routers/provider_status.py`). `age_seconds` computed live from real wall-clock time on every call, never cached. Polled every 3s for the freshness banner (Phase 5). Phase 5 added `demo_mode: bool` (same flag `/admin/fault` is gated behind) so the frontend knows whether to render the fault-injection control without guessing/hardcoding. |
 | POST | `/admin/fault` | demo-only fault injection | Phase 4 implemented (`app/routers/admin.py`). `{"mode": "outage"\|"stale"\|"recover"}`. Gated behind `DEMO_MODE` at the route level — 404 unconditionally if unset, checked before touching the provider or DB. Updates `provider_state`, last-write-wins (no locking). |
 | GET | `/metrics` | ETag short-circuit rate (stretch) | |
 
 **Minimal live scheduler (Phase 4, `app/main.py` lifespan):** one `AsyncIOScheduler` job, one configurable interval (`SCHEDULER_INTERVAL_SECONDS`, default 5s), started/stopped with the app lifecycle. Calls `app/services/scoring_pipeline.py::run_scoring_cycle()` — the exact per-tick logic extracted from Phase 2's manual script, so the script and the live scheduler can never drift apart — then unconditionally calls `provider.advance()` (a no-op internally whenever fault-frozen, so the scheduler itself never branches on fault state). Not a general-purpose job framework — one job, nothing more.
 
 **Idempotency:** `POST /items` upserts on composite PK. `POST /ack` uses `ON CONFLICT DO NOTHING` — safe to replay, which is what makes refresh-mid-ack and duplicate requests safe by construction.
+
+## Frontend (Phase 5)
+
+Next.js App Router, `"use client"` throughout (no server components needed at this scale) — `frontend/app/page.tsx` is the entire dashboard. Client-side state is deliberately split into: a pure ETag-poll reducer (`lib/digestPoll.ts`, 304 leaves state untouched by reference, 200 updates it), independent 3s (`useProviderStatus`) and 5s (`useDigest`, matching the backend's default scheduler cadence) polling hooks, and a `viewed` vs. `latest` distinction in `page.tsx` so a background poll never silently rewrites what the user is looking at — new flags surface as a pull-in affordance instead. Ack has a 1.5s dwell delay (`lib/dwell.ts`) before the ack control is even clickable, per the Stage 2 UX design. The evidence chart is hand-rolled inline SVG (`components/EvidencePanel.tsx`) — no charting library. Severity/freshness badges always render color+icon+text together through one shared `Badge` component, enforced structurally (tested) rather than by convention. Bootstrap watchlist creation (`lib/bootstrap.ts`) always checks `GET /watchlists` first and only creates+seeds on an empty result — verified live to never duplicate across reloads.
 
 **Aggregate ETag hash (locked scheme, `app/services/digest.py`):** for every unacknowledged flag belonging to the watchlist's tickers, take `(flag_id, severity_rank)`; sort by `flag_id` ascending; serialize as `json.dumps([[flag_id, severity_rank], ...], separators=(',', ':'))`; SHA-256 hex digest of the UTF-8 bytes. Independently reproducible from this description alone. Always computed fresh from committed DB state on every request — never cached, never trusts a client-supplied hash.
 
@@ -109,8 +115,10 @@ signalDigest/
 │   │   ├── seed_historical_data.py   # one-off manual backfill: yfinance -> tickers/price_ticks -> baselines
 │   │   ├── smoke_test_replay.py      # one-off manual check: replay real seeded data, confirm source='replay_simulated'
 │   │   ├── run_scoring_once.py       # manual scoring trigger; calls the same run_scoring_cycle the live scheduler uses
-│   │   └── seed_demo_escalation_precondition.py  # Phase 4: manual-only, seeds a constructed low-severity+ack
-│   │                                    precondition for a real not-yet-reached day, for the live escalation-flip demo beat
+│   │   ├── seed_demo_escalation_precondition.py  # Phase 4: manual-only, seeds a constructed low-severity+ack
+│   │   │                                precondition for a real not-yet-reached day, for the live escalation-flip demo beat
+│   │   └── reset_demo_state.py       # Phase 5: truncates flags/flag_ack/watchlist_ack_state, resets provider_state;
+│   │                                    leaves real seeded data and user watchlists untouched
 │   ├── tests/                # pytest + pytest-asyncio; DB-backed tests run against real local Postgres
 │   └── app/
 │       ├── main.py          # FastAPI app + CORS + lifespan (DB pool, provider construction, APScheduler job — Phase 4)
@@ -136,9 +144,29 @@ signalDigest/
 │       │   └── provider_state.py     # provider_state table persistence (Phase 4)
 │       └── routers/
 │           ├── health.py           # GET /health (real SELECT 1)
-│           ├── watchlists.py       # POST /watchlists, /items, GET /digest, POST /ack (Phase 3, real freshness in Phase 4)
-│           ├── tickers.py          # GET /tickers/{ticker}/evidence (Phase 3)
+│           ├── watchlists.py       # GET/POST /watchlists, /items, GET /digest, POST /ack
+│           ├── tickers.py          # GET /tickers, GET /tickers/{ticker}/evidence
 │           ├── admin.py            # POST /admin/fault, DEMO_MODE-gated (Phase 4)
-│           └── provider_status.py  # GET /provider/status (Phase 4)
-└── frontend/                # Next.js (App Router) + Tailwind, standard create-next-app layout
+│           └── provider_status.py  # GET /provider/status (Phase 4, +demo_mode in Phase 5)
+└── frontend/                # Next.js (App Router) + Tailwind
+    ├── vitest.config.mts / vitest.setup.ts   # component + unit test tooling (Phase 5)
+    ├── app/
+    │   ├── page.tsx          # the entire dashboard — bootstrap, digest, banner, fault control, evidence panel
+    │   └── layout.tsx
+    ├── components/
+    │   ├── Badge.tsx              # shared color+icon+text renderer (accessibility invariant lives here)
+    │   ├── SeverityBadge.tsx / FreshnessBanner.tsx
+    │   ├── FaultControl.tsx       # only rendered when /provider/status.demo_mode is true
+    │   ├── DigestList.tsx / DigestRow.tsx / SkeletonRows.tsx
+    │   └── EvidencePanel.tsx      # hand-rolled inline SVG chart, no charting library
+    ├── hooks/
+    │   ├── useProviderStatus.ts   # 3s poll
+    │   └── useDigest.ts           # 5s poll, ETag-aware
+    └── lib/
+        ├── api.ts, types.ts       # typed fetch client matching the real backend contracts
+        ├── digestPoll.ts          # pure 304/200 reducer (tested)
+        ├── dwell.ts               # ack dwell-delay timer (tested)
+        ├── severity.ts            # badge config (tested for the accessibility invariant)
+        ├── explain.ts             # deterministic one-line flag explanation, no LLM
+        └── bootstrap.ts           # idempotent first-run watchlist creation (tested)
 ```

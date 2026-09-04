@@ -38,6 +38,21 @@ def _serialize_flag(row) -> dict:
     }
 
 
+@router.get("")
+async def list_watchlists(user_id: uuid.UUID = Depends(get_current_user)):
+    """Ownership-scoped — same pattern as every other watchlist endpoint,
+    just via WHERE user_id = $1 rather than a single-row lookup."""
+    pool = get_pool()
+    rows = await pool.fetch(
+        "SELECT id, name, created_at FROM watchlists WHERE user_id = $1 ORDER BY created_at ASC",
+        user_id,
+    )
+    return [
+        {"id": str(row["id"]), "name": row["name"], "created_at": row["created_at"].isoformat()}
+        for row in rows
+    ]
+
+
 @router.post("", status_code=201)
 async def create_watchlist(payload: WatchlistCreate, user_id: uuid.UUID = Depends(get_current_user)):
     pool = get_pool()
