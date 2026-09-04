@@ -122,7 +122,7 @@ export function EvidencePanel({
       >
         <div className="mb-3 flex items-center justify-between">
           <h2 className="text-sm font-semibold text-ink">Show your work</h2>
-          <button onClick={onClose} className="text-ink-muted hover:text-ink" aria-label="Close">
+          <button onClick={onClose} className="focus-ring rounded text-ink-muted hover:text-ink" aria-label="Close">
             ✕
           </button>
         </div>

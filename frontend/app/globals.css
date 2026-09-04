@@ -32,13 +32,20 @@
   --down-strong: #e11d48;
   --down-text: #be123c;
 
-  /* Freshness (system health, not price direction — a separate channel) */
-  --fresh-good: #059669;
-  --fresh-good-wash: rgba(5, 150, 105, 0.08);
-  --fresh-amber: #d97706;
-  --fresh-amber-wash: rgba(217, 119, 6, 0.08);
-  --fresh-bad: #e11d48;
-  --fresh-bad-wash: rgba(225, 29, 72, 0.08);
+  /* Freshness (system health, not price direction — a separate channel).
+     Five genuinely graduated steps (not just five labels sharing three
+     colors) so every state is distinguishable at a glance: strong-green →
+     soft-green → soft-amber → strong-amber → red. */
+  --fresh-live: #059669;
+  --fresh-live-wash: rgba(5, 150, 105, 0.1);
+  --fresh-recent: #34a37e;
+  --fresh-recent-wash: rgba(5, 150, 105, 0.06);
+  --fresh-delayed: #b0790f;
+  --fresh-delayed-wash: rgba(217, 119, 6, 0.06);
+  --fresh-stale: #d97706;
+  --fresh-stale-wash: rgba(217, 119, 6, 0.12);
+  --fresh-unavailable: #e11d48;
+  --fresh-unavailable-wash: rgba(225, 29, 72, 0.1);
 }
 
 @theme inline {
@@ -66,12 +73,16 @@
   --color-down-strong: var(--down-strong);
   --color-down-text: var(--down-text);
 
-  --color-fresh-good: var(--fresh-good);
-  --color-fresh-good-wash: var(--fresh-good-wash);
-  --color-fresh-amber: var(--fresh-amber);
-  --color-fresh-amber-wash: var(--fresh-amber-wash);
-  --color-fresh-bad: var(--fresh-bad);
-  --color-fresh-bad-wash: var(--fresh-bad-wash);
+  --color-fresh-live: var(--fresh-live);
+  --color-fresh-live-wash: var(--fresh-live-wash);
+  --color-fresh-recent: var(--fresh-recent);
+  --color-fresh-recent-wash: var(--fresh-recent-wash);
+  --color-fresh-delayed: var(--fresh-delayed);
+  --color-fresh-delayed-wash: var(--fresh-delayed-wash);
+  --color-fresh-stale: var(--fresh-stale);
+  --color-fresh-stale-wash: var(--fresh-stale-wash);
+  --color-fresh-unavailable: var(--fresh-unavailable);
+  --color-fresh-unavailable-wash: var(--fresh-unavailable-wash);
 
   --font-sans: var(--font-geist);
   --font-display: var(--font-plus-jakarta);
@@ -101,6 +112,28 @@ body {
   line-height: 14px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/* design.md's body-lg (16px/26px/-0.01em) — the ticker's deliberate size,
+   not an accidental browser default. Ticker is the digest's primary
+   anchor, so it gets an explicit, chosen scale step rather than inheriting
+   whatever the page's base font-size happens to be. */
+.type-body-lg {
+  font-size: 16px;
+  line-height: 26px;
+  letter-spacing: -0.01em;
+}
+
+/* design.md's Focus State: hairline transition to Cobalt + a subtle 2px
+   ring at 15% opacity. Applied to every interactive control (buttons,
+   select) so keyboard focus is always visible — not left to browser
+   defaults on some elements and not others. */
+.focus-ring {
+  outline: none;
+}
+.focus-ring:focus-visible {
+  border-color: var(--cobalt);
+  box-shadow: 0 0 0 2px rgba(67, 56, 202, 0.15);
 }
 
 @media (prefers-reduced-motion: no-preference) {

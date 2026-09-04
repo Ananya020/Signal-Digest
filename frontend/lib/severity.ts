@@ -98,10 +98,14 @@ export interface BadgeConfig {
   borderClass: string;
 }
 
+// Five genuinely graduated steps — not five labels sharing three colors.
+// Strong-green (freshest) → soft-green → soft-amber → strong-amber → red,
+// so every state is visually distinguishable at a glance, not just by
+// reading its label text.
 export const FRESHNESS_CONFIG: Record<Freshness, BadgeConfig> = {
-  LIVE: { label: "Live", icon: "●", textClass: "text-fresh-good", bgClass: "bg-fresh-good-wash", borderClass: "border-transparent" },
-  RECENT: { label: "Recent", icon: "●", textClass: "text-fresh-good", bgClass: "bg-fresh-good-wash", borderClass: "border-transparent" },
-  DELAYED: { label: "Delayed", icon: "●", textClass: "text-fresh-amber", bgClass: "bg-fresh-amber-wash", borderClass: "border-transparent" },
-  STALE: { label: "Stale", icon: "●", textClass: "text-fresh-amber", bgClass: "bg-fresh-amber-wash", borderClass: "border-transparent" },
-  UNAVAILABLE: { label: "Unavailable", icon: "✕", textClass: "text-fresh-bad", bgClass: "bg-fresh-bad-wash", borderClass: "border-transparent" },
+  LIVE: { label: "Live", icon: "●", textClass: "text-fresh-live", bgClass: "bg-fresh-live-wash", borderClass: "border-transparent" },
+  RECENT: { label: "Recent", icon: "◐", textClass: "text-fresh-recent", bgClass: "bg-fresh-recent-wash", borderClass: "border-transparent" },
+  DELAYED: { label: "Delayed", icon: "◐", textClass: "text-fresh-delayed", bgClass: "bg-fresh-delayed-wash", borderClass: "border-transparent" },
+  STALE: { label: "Stale", icon: "●", textClass: "text-fresh-stale", bgClass: "bg-fresh-stale-wash", borderClass: "border-transparent" },
+  UNAVAILABLE: { label: "Unavailable", icon: "✕", textClass: "text-fresh-unavailable", bgClass: "bg-fresh-unavailable-wash", borderClass: "border-transparent" },
 };

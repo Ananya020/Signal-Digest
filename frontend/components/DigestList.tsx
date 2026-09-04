@@ -36,7 +36,7 @@ export function DigestList({
       {pendingNewCount > 0 && (
         <button
           onClick={onPullInNew}
-          className="flex w-full items-center justify-center rounded-md bg-cobalt-wash px-3 py-2 text-sm font-medium text-cobalt transition-colors hover:bg-cobalt/15"
+          className="focus-ring flex w-full items-center justify-center rounded-md bg-cobalt-wash px-3 py-2 text-sm font-medium text-cobalt transition-colors hover:bg-cobalt/15"
         >
           Show {pendingNewCount} new signal{pendingNewCount > 1 ? "s" : ""}
         </button>

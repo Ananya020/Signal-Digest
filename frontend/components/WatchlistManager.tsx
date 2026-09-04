@@ -73,7 +73,7 @@ export function WatchlistManager({ watchlistId }: { watchlistId: string }) {
             value={selected}
             onChange={(e) => setSelected(e.target.value)}
             disabled={pending || available.length === 0}
-            className="rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-ink disabled:opacity-50"
+            className="focus-ring rounded-md border border-border bg-surface-raised px-2 py-1 text-xs text-ink disabled:opacity-50"
           >
             <option value="">Add ticker…</option>
             {available.map((t) => (
@@ -85,7 +85,7 @@ export function WatchlistManager({ watchlistId }: { watchlistId: string }) {
           <button
             onClick={handleAdd}
             disabled={pending || !selected}
-            className="rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
+            className="focus-ring rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
           >
             Add
           </button>
@@ -110,7 +110,7 @@ export function WatchlistManager({ watchlistId }: { watchlistId: string }) {
                 onClick={() => handleRemove(item.ticker)}
                 disabled={pending}
                 title={`Remove ${item.ticker}`}
-                className="text-xs text-ink-muted transition-colors hover:text-down-text disabled:opacity-50"
+                className="focus-ring rounded text-xs text-ink-muted transition-colors hover:text-down-text disabled:opacity-50"
               >
                 Remove
               </button>

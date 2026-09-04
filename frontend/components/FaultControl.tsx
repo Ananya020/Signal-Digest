@@ -36,21 +36,21 @@ export function FaultControl({ status, onChanged }: { status: ProviderStatus | n
           <button
             onClick={() => trigger("outage")}
             disabled={pending !== null}
-            className="rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
+            className="focus-ring rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
           >
             {pending === "outage" ? "Setting…" : "Outage"}
           </button>
           <button
             onClick={() => trigger("stale")}
             disabled={pending !== null}
-            className="rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
+            className="focus-ring rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
           >
             {pending === "stale" ? "Setting…" : "Stale"}
           </button>
           <button
             onClick={() => trigger("recover")}
             disabled={pending !== null}
-            className="rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
+            className="focus-ring rounded-md border border-border bg-surface-raised px-2.5 py-1 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle disabled:opacity-50"
           >
             {pending === "recover" ? "Setting…" : "Recover"}
           </button>

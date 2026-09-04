@@ -75,4 +75,9 @@ describe("freshness config", () => {
       expect(config.icon.length).toBeGreaterThan(0);
     }
   });
+
+  it("all five states are visually distinct (color), not just distinct by label text", () => {
+    const colorClasses = Object.values(FRESHNESS_CONFIG).map((c) => c.textClass);
+    expect(new Set(colorClasses).size).toBe(5);
+  });
 });

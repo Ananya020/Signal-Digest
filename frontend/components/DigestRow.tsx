@@ -36,8 +36,8 @@ export function DigestRow({
       className={`animate-row-in flex flex-col gap-1.5 border-b border-hairline px-4 py-3 last:border-0 ${style.barWidthClass} ${style.barColorClass} ${style.rowBgClass}`}
     >
       <div className="flex items-start justify-between gap-3">
-        <button onClick={() => onSelect(flag)} className="flex min-w-0 items-center gap-2 text-left">
-          <span className={`${style.tickerWeightClass} text-ink`}>{bareTicker}</span>
+        <button onClick={() => onSelect(flag)} className="focus-ring flex min-w-0 items-center gap-2 rounded text-left">
+          <span className={`type-body-lg ${style.tickerWeightClass} text-ink`}>{bareTicker}</span>
           <span
             className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium ${style.badgeBgClass} ${style.badgeTextClass}`}
           >
@@ -48,7 +48,7 @@ export function DigestRow({
         <time className="tnum shrink-0 pt-0.5 text-xs text-ink-muted">{time}</time>
       </div>
 
-      <button onClick={() => onSelect(flag)} className="text-left">
+      <button onClick={() => onSelect(flag)} className="focus-ring rounded text-left">
         <p className="tnum text-sm text-ink-muted">
           <span aria-hidden="true" className={style.arrowTextClass}>
             {style.arrow}{" "}
@@ -61,7 +61,7 @@ export function DigestRow({
         onClick={() => onAck(flag.id)}
         disabled={!ackEligible}
         title={ackEligible ? "Acknowledge this signal" : "Reviewing…"}
-        className="self-start rounded px-1.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
+        className="focus-ring self-start rounded px-1.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-30"
       >
         Acknowledge
       </button>
