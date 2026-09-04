@@ -119,6 +119,36 @@ async def upsert_baseline(pool: asyncpg.Pool, result: BaselineResult) -> None:
     )
 
 
+async def load_latest_baseline(pool: asyncpg.Pool, ticker: str) -> BaselineResult | None:
+    """Phase 2 scoring reads this. Note: Phase 1's backfill computes exactly
+    one baseline row per ticker (as of the last date in its ~1y history) —
+    baselines are not recomputed per replay day. Scoring against earlier
+    replay days therefore uses a baseline that is technically "from the
+    future" relative to that replay day; this is a known Phase 2
+    simplification (see PROGRESS.md), not a walk-forward-correct backtest."""
+    row = await pool.fetchrow(
+        """
+        SELECT ticker, as_of_date, mean_return_30d, stdev_return_30d,
+               avg_volume_30d, stdev_5d, stdev_30d, sample_size
+        FROM baselines WHERE ticker = $1
+        ORDER BY as_of_date DESC LIMIT 1
+        """,
+        ticker,
+    )
+    if row is None:
+        return None
+    return BaselineResult(
+        ticker=row["ticker"],
+        as_of_date=row["as_of_date"],
+        mean_return_30d=float(row["mean_return_30d"]) if row["mean_return_30d"] is not None else None,
+        stdev_return_30d=float(row["stdev_return_30d"]) if row["stdev_return_30d"] is not None else None,
+        avg_volume_30d=float(row["avg_volume_30d"]) if row["avg_volume_30d"] is not None else None,
+        stdev_5d=float(row["stdev_5d"]) if row["stdev_5d"] is not None else None,
+        stdev_30d=float(row["stdev_30d"]) if row["stdev_30d"] is not None else None,
+        sample_size=row["sample_size"],
+    )
+
+
 async def compute_and_store_baseline(pool: asyncpg.Pool, ticker: str) -> BaselineResult | None:
     series = await load_price_series(pool, ticker)
     result = compute_baseline_from_series(ticker, series)

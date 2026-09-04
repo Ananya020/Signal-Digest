@@ -84,23 +84,30 @@ provider_state (
 ## CRITICAL: severity-escalation must bust the ack
 `flags` upserts on `(ticker, trading_day, signal_type)`; `flag_ack` keys on the constant `flag_id`. Without this fix, a flag that escalates from "notable" to "extreme" intraday stays silently acked even though it's a genuinely new qualifying event.
 
-**Upsert (one transaction, both steps):**
+**Correction made during Phase 2 implementation (2026-09-04) — the original SQL below is superseded.** The original design put a `WHERE EXCLUDED.severity_rank IS DISTINCT FROM flags.severity_rank OR flags.severity_rank IS NULL` clause directly on the `ON CONFLICT DO UPDATE`. Verified directly against real Postgres: when that `WHERE` evaluates false, `RETURNING` yields **zero rows** — the `UPDATE` doesn't run at all, on any column. That clause was conflating two different questions — "should the flag's evidence be refreshed?" and "should the ack be busted?" — under one condition. Consequence: a same-severity rerun (e.g. `z_score` moving from 2.1 to 2.4, still `notable`) silently skipped updating `z_score`, `volume_ratio`, `sector_relative`, `computed_at`, and `provider_state_at_computation` — the flag went stale even though a newer computation had just run. Caught by a dedicated regression test in `backend/tests/test_flags_ack_bust.py` before this ever reached production behavior.
+
+**Corrected upsert (one transaction, still both steps — implemented in `backend/app/services/flags.py`):**
 ```sql
-INSERT INTO flags (ticker, trading_day, signal_type, z_score, severity, severity_rank, ...)
+-- previous severity_rank is read BEFORE this statement, in the same transaction
+INSERT INTO flags (ticker, trading_day, signal_type, z_score, severity, severity_rank, volume_ratio, sector_relative, computed_at, provider_state_at_computation)
 VALUES (...)
 ON CONFLICT (ticker, trading_day, signal_type) DO UPDATE
 SET z_score = EXCLUDED.z_score, severity = EXCLUDED.severity,
-    severity_rank = EXCLUDED.severity_rank, computed_at = EXCLUDED.computed_at,
+    severity_rank = EXCLUDED.severity_rank, volume_ratio = EXCLUDED.volume_ratio,
+    sector_relative = EXCLUDED.sector_relative, computed_at = EXCLUDED.computed_at,
     provider_state_at_computation = EXCLUDED.provider_state_at_computation
-WHERE EXCLUDED.severity_rank IS DISTINCT FROM flags.severity_rank OR flags.severity_rank IS NULL
+-- no WHERE clause: evidence always refreshes to the latest computation, unconditionally
 RETURNING id, severity_rank, (xmax = 0) AS was_insert;
 ```
 ```python
 # app-layer, same transaction as the upsert above:
 if not was_insert and new_severity_rank > previous_severity_rank:
     DELETE FROM flag_ack WHERE flag_id = :flag_id
-# equal or lower rank -> leave flag_ack untouched, no-op
+# equal or lower rank -> leave flag_ack untouched, no-op — decided independently
+# of whether the evidence columns were refreshed above.
 ```
+
+This preserves the intended ack-bust semantics exactly (escalation busts, de-escalation and equal-rank don't) while fixing the stale-evidence defect. The upsert and the conditional delete remain one atomic transaction — never split across two.
 
 **Deliberate, asymmetric by design (state this in the README):** severity escalation busts the ack; de-escalation does not. An ack means "user has seen and dismissed this level of concern." Worse-than-dismissed is new information and must resurface. Better-than-dismissed has no new concern to raise — staying acked is correct, not an oversight.
 
