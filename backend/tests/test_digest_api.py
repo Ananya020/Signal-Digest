@@ -11,6 +11,37 @@ from app.services.scoring import compute_return
 from tests.helpers import insert_flag
 
 
+async def test_digest_excludes_volatility_regime_flags(client, db_pool, demo_watchlist, test_ticker):
+    """Deliberate product decision (PRODUCT.md), not a bug: volatility_regime
+    is still computed and persisted, just not surfaced in the digest."""
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    price_flag_id = await insert_flag(db_pool, test_ticker, date(2026, 2, 1), signal_type="price_zscore")
+    vol_flag_id = await insert_flag(db_pool, test_ticker, date(2026, 2, 1), signal_type="volatility_regime")
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    ids = [f["id"] for f in resp.json()["flags"]]
+
+    assert price_flag_id in ids
+    assert vol_flag_id not in ids
+    # Not deleted — still a real row in the table.
+    row = await db_pool.fetchrow("SELECT id FROM flags WHERE id = $1", vol_flag_id)
+    assert row is not None
+
+
+async def test_digest_orders_by_absolute_z_score_descending(client, db_pool, demo_watchlist, test_ticker, test_ticker_2):
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker_2})
+
+    low_id = await insert_flag(db_pool, test_ticker, date(2026, 2, 2), z_score=2.1)
+    high_id = await insert_flag(db_pool, test_ticker_2, date(2026, 2, 2), z_score=-4.5)
+    mid_id = await insert_flag(db_pool, test_ticker, date(2026, 2, 3), z_score=3.2)
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    ids = [f["id"] for f in resp.json()["flags"]]
+
+    assert ids == [high_id, mid_id, low_id]  # |−4.5| > |3.2| > |2.1|
+
+
 async def test_digest_etag_full_sequence(client, db_pool, demo_watchlist, test_ticker):
     add_resp = await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
     assert add_resp.status_code == 200
@@ -42,6 +73,39 @@ async def test_digest_etag_full_sequence(client, db_pool, demo_watchlist, test_t
     resp4 = await client.get(f"/watchlists/{demo_watchlist}/digest", headers={"If-None-Match": etag2})
     assert resp4.status_code == 304
     assert resp4.headers["etag"] == etag2
+
+
+async def test_stale_if_none_match_after_multiple_state_changes_returns_full_200(
+    client, db_pool, demo_watchlist, test_ticker
+):
+    """RELIABILITY.md #12 — a client returning after several server-state
+    changes (acked flags, new flags) presents a long-stale ETag. The server
+    always recomputes the hash server-side, so this should just fall out of
+    existing comparison logic — verified explicitly rather than assumed."""
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+
+    first = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    ancient_etag = first.headers["etag"]  # "several server-state-changes ago"
+
+    # Several state changes happen after the client last saw this etag.
+    for day in range(2, 6):
+        flag_id = await insert_flag(db_pool, test_ticker, date(2026, 1, day), severity_rank=1)
+        await client.post(f"/watchlists/{demo_watchlist}/ack", json={"flag_ids": [flag_id]})
+    await insert_flag(db_pool, test_ticker, date(2026, 1, 10), severity_rank=2)
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest", headers={"If-None-Match": ancient_etag})
+
+    assert resp.status_code == 200  # not a false 304
+    assert resp.headers["etag"] != ancient_etag
+    assert len(resp.json()["flags"]) == 1  # the one still-unacked flag, current data
+
+
+async def test_garbage_if_none_match_returns_full_200_not_an_error(client, demo_watchlist, test_ticker):
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    resp = await client.get(
+        f"/watchlists/{demo_watchlist}/digest", headers={"If-None-Match": '"not-a-real-hash-value"'}
+    )
+    assert resp.status_code == 200
 
 
 async def test_ack_is_idempotent(client, db_pool, demo_watchlist, test_ticker):

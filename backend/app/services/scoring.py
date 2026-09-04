@@ -13,9 +13,12 @@ extreme. This is consistent with the stated trigger "flag if |z| >= 2.0".
 from dataclasses import dataclass
 from datetime import date, datetime
 from statistics import mean
+from zoneinfo import ZoneInfo
 
 from app.data.baselines import MIN_SAMPLE_SIZE, BaselineResult
 from app.providers.base import Tick
+
+IST = ZoneInfo("Asia/Kolkata")
 
 Z_SCORE_TRIGGER = 2.0
 SEVERITY_BANDS: list[tuple[float, str, int]] = [
@@ -62,8 +65,19 @@ def trading_day_from_tick(tick: Tick) -> date:
     wall-clock 'today'. Replay ticks come from real past dates; using
     datetime.now() here would collide every ticker's entire history onto one
     date and violate UNIQUE(ticker, trading_day, signal_type) in confusing
-    ways."""
-    return tick.timestamp.date()
+    ways.
+
+    Correction (RELIABILITY.md #10, caught by test before it shipped as a
+    live bug): `tick.timestamp` is UTC-aware; taking `.date()` directly
+    gives the UTC calendar date, not the Asia/Kolkata trading day. The two
+    only coincide when the tick falls well inside the IST day — which is
+    why real seeded data (anchored at 15:30 IST = 10:00 UTC, comfortably
+    mid-day) never surfaced this. A tick near the UTC/IST day boundary
+    would silently bucket into the wrong trading_day otherwise. Convert to
+    IST explicitly before taking the date, per RELIABILITY.md's design
+    ("all timestamps UTC internally, trading-day boundaries computed in
+    Asia/Kolkata explicitly")."""
+    return tick.timestamp.astimezone(IST).date()
 
 
 def compute_return(prev_price: float, curr_price: float) -> float:

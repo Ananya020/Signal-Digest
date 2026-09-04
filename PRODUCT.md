@@ -17,6 +17,12 @@ Explicit rejection of ML-for-novelty. Z-score crossing ±2.0 on rolling 20-30 da
 
 The *only* acceptable optional LLM use: phrasing the one-line natural-language explanation from an already-computed structured signal (z_score, volume_ratio, sector_relative). Never touches decision logic. Cut first under time pressure — deterministic string template is the default target, not a fallback.
 
+## `volatility_regime` is computed but not surfaced in the digest — deliberate, not a bug
+
+`signal_type = 'volatility_regime'` (stdev_5d/stdev_30d ratio crossing 1.5) is still computed and persisted by the scoring engine exactly as designed — nothing about its computation changed. Live testing (Phase 5/6) surfaced a real UX problem: because baselines are static (Phase 2's documented simplification — one baseline row per ticker, not recomputed per replay day), the same handful of tickers whose end-of-window stdev ratio happens to cross the trigger flag on *every single replay cycle*, with the same generic explanation text each time. That's repetitive noise, not a meaningful "something changed" signal, in a build without rolling baselines.
+
+Resolution: `GET /watchlists/{id}/digest` filters to `signal_type = 'price_zscore'` only (`backend/app/services/digest.py`). No rows are deleted, no scoring logic touched — this is purely a display decision, reversible in one line once rolling baselines exist (a natural extension, not planned for this build). The digest is also explicitly ranked by `|z_score|` descending, most statistically unusual first, now that price_zscore is the digest's only signal type.
+
 ## "Since you last checked" — design precedent
 Modeled explicitly on two real Groww engineering blog posts (tech.groww.in):
 - **"Improving the Efficiency of Rendering User Holdings"** — ETag-as-fingerprint-of-state, cached in Redis, `304 Not Modified` short-circuit when unchanged. Our equivalent: `watchlist_ack_state.last_seen_hash` + real HTTP `ETag`/`If-None-Match` semantics on `GET /digest`.

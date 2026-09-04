@@ -28,6 +28,16 @@ EMPTY_DIGEST_HASH = hashlib.sha256(EMPTY_DIGEST_SERIALIZED.encode("utf-8")).hexd
 # Reuses the exact join shape from DATA_MODEL.md's "what's changed since
 # last check" key query — flags for the watchlist's tickers with no
 # corresponding flag_ack row for this watchlist.
+#
+# `signal_type = 'price_zscore'` filter: a deliberate product decision, not
+# a bug fix (see PRODUCT.md's "volatility_regime is computed but not
+# surfaced" note). volatility_regime flags are still computed and persisted
+# by the scoring engine exactly as before — this filter only affects what
+# GET /digest returns; no rows are deleted or the computation skipped.
+#
+# `ORDER BY abs(f.z_score) DESC`: the digest is ranked by statistical
+# unusualness, most extreme first — explicit now that price_zscore is the
+# only signal_type shown, since z_score is always non-NULL for it.
 _UNACKED_FLAGS_SQL = """
     SELECT f.id, f.ticker, f.trading_day, f.signal_type, f.z_score,
            f.severity, f.severity_rank, f.volume_ratio, f.sector_relative,
@@ -35,7 +45,8 @@ _UNACKED_FLAGS_SQL = """
     FROM flags f
     JOIN watchlist_items wi ON wi.ticker = f.ticker
     LEFT JOIN flag_ack fa ON fa.flag_id = f.id AND fa.watchlist_id = wi.watchlist_id
-    WHERE wi.watchlist_id = $1 AND fa.flag_id IS NULL
+    WHERE wi.watchlist_id = $1 AND fa.flag_id IS NULL AND f.signal_type = 'price_zscore'
+    ORDER BY abs(f.z_score) DESC
 """
 
 
