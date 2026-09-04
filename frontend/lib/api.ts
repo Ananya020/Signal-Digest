@@ -74,6 +74,19 @@ export async function ackFlags(
   return json(res);
 }
 
+export async function listWatchlistItems(watchlistId: string): Promise<TickerInfo[]> {
+  const res = await fetch(`${BASE_URL}/watchlists/${watchlistId}/items`);
+  return json(res);
+}
+
+export async function removeWatchlistItem(watchlistId: string, ticker: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/watchlists/${watchlistId}/items/${ticker}`, { method: "DELETE" });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status} ${res.statusText}: ${body}`);
+  }
+}
+
 export async function fetchProviderStatus(): Promise<ProviderStatus> {
   const res = await fetch(`${BASE_URL}/provider/status`);
   return json(res);

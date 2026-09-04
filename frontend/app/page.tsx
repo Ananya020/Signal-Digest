@@ -5,11 +5,13 @@ import { DigestList } from "@/components/DigestList";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { FaultControl } from "@/components/FaultControl";
 import { FreshnessBanner } from "@/components/FreshnessBanner";
+import { WatchlistManager } from "@/components/WatchlistManager";
 import { useDigest } from "@/hooks/useDigest";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { ackFlags, fetchEvidence } from "@/lib/api";
 import { ensureBootstrapWatchlist } from "@/lib/bootstrap";
 import { EMPTY_DIGEST_POLL_STATE, newFlagIds, type DigestPollState } from "@/lib/digestPoll";
+import { directionFromFlag } from "@/lib/severity";
 import type { EvidenceResponse, Flag } from "@/lib/types";
 
 export default function Home() {
@@ -73,20 +75,23 @@ export default function Home() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 p-4 sm:p-8">
-      <h1 className="text-xl font-semibold text-zinc-900 dark:text-zinc-50">Signal Digest</h1>
+    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6">
+      <header className="flex flex-col gap-1">
+        <h1 className="font-display text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-ink">
+          Signal Digest
+        </h1>
+        <p className="text-sm text-ink-muted">Statistically unusual moves across your watchlist.</p>
+      </header>
 
       {bootstrapError && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-          {bootstrapError}
-        </div>
+        <div className="rounded-md bg-down-wash px-3 py-2 text-sm text-down-text">{bootstrapError}</div>
       )}
 
       <FreshnessBanner status={providerStatus} />
 
-      {providerStatus?.demo_mode && (
-        <FaultControl onChanged={() => pollOnce()} />
-      )}
+      {providerStatus?.demo_mode && <FaultControl status={providerStatus} onChanged={() => pollOnce()} />}
+
+      {watchlistId && <WatchlistManager watchlistId={watchlistId} />}
 
       <DigestList
         flags={viewed.data?.flags ?? null}
@@ -100,6 +105,8 @@ export default function Home() {
       {selectedFlag && (
         <EvidencePanel
           evidence={evidence}
+          severity={selectedFlag.severity}
+          direction={directionFromFlag(selectedFlag)}
           loading={evidenceLoading}
           error={evidenceError}
           onClose={() => setSelectedFlag(null)}

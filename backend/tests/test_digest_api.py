@@ -328,3 +328,54 @@ async def test_add_item_is_idempotent_upsert(client, demo_watchlist, test_ticker
     resp2 = await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
     assert resp1.status_code == 200
     assert resp2.status_code == 200
+
+
+async def test_list_items_returns_watchlist_membership_not_just_flagged_tickers(
+    client, db_pool, demo_watchlist, test_ticker, test_ticker_2
+):
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker_2})
+    # Neither ticker has any flag at all — membership must still be visible.
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/items")
+    assert resp.status_code == 200
+    tickers = {item["ticker"] for item in resp.json()}
+    assert tickers == {test_ticker, test_ticker_2}
+    sample = next(i for i in resp.json() if i["ticker"] == test_ticker)
+    assert sample["name"] == "Test Ticker"
+    assert sample["sector"] == "Test"
+
+
+async def test_list_items_rejects_non_owned_watchlist(client, foreign_watchlist):
+    resp = await client.get(f"/watchlists/{foreign_watchlist}/items")
+    assert resp.status_code == 404
+
+
+async def test_remove_item_deletes_from_watchlist(client, db_pool, demo_watchlist, test_ticker):
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    row = await db_pool.fetchrow(
+        "SELECT 1 FROM watchlist_items WHERE watchlist_id = $1 AND ticker = $2", demo_watchlist, test_ticker
+    )
+    assert row is not None
+
+    resp = await client.delete(f"/watchlists/{demo_watchlist}/items/{test_ticker}")
+    assert resp.status_code == 200
+
+    row_after = await db_pool.fetchrow(
+        "SELECT 1 FROM watchlist_items WHERE watchlist_id = $1 AND ticker = $2", demo_watchlist, test_ticker
+    )
+    assert row_after is None
+
+
+async def test_remove_item_is_idempotent(client, demo_watchlist, test_ticker):
+    # Never added — removing it anyway must be a no-op, not an error.
+    resp = await client.delete(f"/watchlists/{demo_watchlist}/items/{test_ticker}")
+    assert resp.status_code == 200
+
+    resp_again = await client.delete(f"/watchlists/{demo_watchlist}/items/{test_ticker}")
+    assert resp_again.status_code == 200
+
+
+async def test_remove_item_rejects_non_owned_watchlist(client, foreign_watchlist, test_ticker):
+    resp = await client.delete(f"/watchlists/{foreign_watchlist}/items/{test_ticker}")
+    assert resp.status_code == 404

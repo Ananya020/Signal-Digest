@@ -21,7 +21,7 @@ export function DigestList({
 }) {
   if (error) {
     return (
-      <div className="rounded-md border border-red-200 bg-red-50 px-3 py-4 text-sm text-red-700">
+      <div className="rounded-md bg-down-wash px-3 py-4 text-sm text-down-text">
         Couldn&apos;t load the digest: {error}
       </div>
     );
@@ -32,22 +32,22 @@ export function DigestList({
   }
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-3">
       {pendingNewCount > 0 && (
         <button
           onClick={onPullInNew}
-          className="self-center rounded-full bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-blue-700"
+          className="flex w-full items-center justify-center rounded-md bg-cobalt-wash px-3 py-2 text-sm font-medium text-cobalt transition-colors hover:bg-cobalt/15"
         >
-          {pendingNewCount} new update{pendingNewCount > 1 ? "s" : ""} — click to view
+          Show {pendingNewCount} new signal{pendingNewCount > 1 ? "s" : ""}
         </button>
       )}
 
+      {/* Anti-Container Architecture (design.md): edge-to-edge rows with
+          hairline dividers, no nested bordered card wrapping the list. */}
       {flags.length === 0 ? (
-        <div className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-8 text-center text-sm text-zinc-500 dark:border-zinc-800 dark:bg-zinc-900">
-          Nothing unusual right now — every flagged move has been acknowledged.
-        </div>
+        <div className="px-3 py-10 text-center text-sm text-ink-muted">Nothing unusual right now. All caught up.</div>
       ) : (
-        <ul className="rounded-md border border-zinc-200 dark:border-zinc-800">
+        <ul>
           {flags.map((flag) => (
             <DigestRow key={flag.id} flag={flag} onAck={onAck} onSelect={onSelect} />
           ))}

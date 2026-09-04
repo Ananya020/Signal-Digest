@@ -79,7 +79,8 @@ This exercises the exact same code path a real outage would hit — that's what 
 | GET | `/watchlists` | list current demo user's watchlists | Phase 5 implemented (`app/routers/watchlists.py`). Ownership-scoped via `WHERE user_id = $1` — same pattern as every other watchlist endpoint. |
 | POST | `/watchlists` | create watchlist | |
 | POST | `/watchlists/{id}/items` | add ticker | idempotent upsert on PK |
-| DELETE | `/watchlists/{id}/items/{ticker}` | remove ticker | |
+| GET | `/watchlists/{id}/items` | list watchlist ticker membership | Phase 7a implemented (`app/routers/watchlists.py`). `{ticker, name, sector}[]`. Independent of whether a ticker currently has an active flag — the digest only returns flagged tickers, which isn't the same as membership. |
+| DELETE | `/watchlists/{id}/items/{ticker}` | remove ticker | Phase 7a implemented. Idempotent — removing a ticker not currently in the watchlist is a no-op, not an error. |
 | GET | `/tickers` | list the fixed ticker universe | Phase 5 implemented (`app/routers/tickers.py`). `{ticker, name, sector}[]`. Universe metadata, not user data — no auth scoping. |
 | GET | `/watchlists/{id}/digest` | current flags + freshness state | Returns `ETag` header = aggregate hash; client sends `If-None-Match` → 304 if unchanged. Phase 3 implemented, Phase 4 wired real freshness — `freshness` field reflects the live `ProviderStatus.state` (`app/routers/watchlists.py`), no longer hardcoded. When `UNAVAILABLE`, still returns the last-known unacked flags (never empties the response) with `detail` making clear no new scoring occurred. |
 | POST | `/watchlists/{id}/ack` | ack specific flag IDs | `{flag_ids: [...]}` — no client-supplied hash accepted; server always recomputes authoritative hash, never trusts client's. Phase 3 implemented; `ignored` entries are `{id, reason}` objects (Phase 3 correction). |

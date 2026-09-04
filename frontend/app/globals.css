@@ -1,26 +1,131 @@
 @import "tailwindcss";
 
+/* Signal Digest — "Precision Intelligence" design system (design.md).
+   Single committed light theme — this is an intentional replacement of
+   the prior dark-first token set, not a parallel option. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Canvas & neutral architecture */
+  --canvas: #faf9f6;
+  --surface-subtle: #f1f3f5;
+  --surface-hover: #f8f9fa;
+  --surface-raised: #ffffff;
+  --hairline: rgba(15, 23, 42, 0.06);
+  --border: rgba(15, 23, 42, 0.1);
+  --border-strong: rgba(15, 23, 42, 0.09);
+  --ink: #0f172a;
+  --ink-muted: #64748b;
+
+  /* Functional accents */
+  --cobalt: #4338ca;
+  --cobalt-hover: #3730a3;
+  --cobalt-wash: rgba(67, 56, 202, 0.08);
+
+  /* Direction hue families — severity is intensity WITHIN these, never a
+     hue change. "wash" = Notable, "soft" = Significant, "strong" = Extreme. */
+  --up-wash: rgba(5, 150, 105, 0.08);
+  --up-soft: #d1fae5;
+  --up-strong: #059669;
+  --up-text: #047857;
+
+  --down-wash: rgba(225, 29, 72, 0.08);
+  --down-soft: #ffe4e6;
+  --down-strong: #e11d48;
+  --down-text: #be123c;
+
+  /* Freshness (system health, not price direction — a separate channel) */
+  --fresh-good: #059669;
+  --fresh-good-wash: rgba(5, 150, 105, 0.08);
+  --fresh-amber: #d97706;
+  --fresh-amber-wash: rgba(217, 119, 6, 0.08);
+  --fresh-bad: #e11d48;
+  --fresh-bad-wash: rgba(225, 29, 72, 0.08);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
+  --color-canvas: var(--canvas);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-hover: var(--surface-hover);
+  --color-surface-raised: var(--surface-raised);
+  --color-hairline: var(--hairline);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-ink: var(--ink);
+  --color-ink-muted: var(--ink-muted);
+
+  --color-cobalt: var(--cobalt);
+  --color-cobalt-hover: var(--cobalt-hover);
+  --color-cobalt-wash: var(--cobalt-wash);
+
+  --color-up-wash: var(--up-wash);
+  --color-up-soft: var(--up-soft);
+  --color-up-strong: var(--up-strong);
+  --color-up-text: var(--up-text);
+
+  --color-down-wash: var(--down-wash);
+  --color-down-soft: var(--down-soft);
+  --color-down-strong: var(--down-strong);
+  --color-down-text: var(--down-text);
+
+  --color-fresh-good: var(--fresh-good);
+  --color-fresh-good-wash: var(--fresh-good-wash);
+  --color-fresh-amber: var(--fresh-amber);
+  --color-fresh-amber-wash: var(--fresh-amber-wash);
+  --color-fresh-bad: var(--fresh-bad);
+  --color-fresh-bad-wash: var(--fresh-bad-wash);
+
+  --font-sans: var(--font-geist);
+  --font-display: var(--font-plus-jakarta);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+body {
+  background: var(--canvas);
+  color: var(--ink);
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* design.md's Tabular Numerics principle: enforced on any currency/delta/
+   percentage/timeline figure so live updates never reflow layout. */
+.tnum {
+  font-feature-settings:
+    "tnum" on,
+    "cv02" on,
+    "cv03" on;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Precision Metadata micro-labels — design.md's own deliberate uppercase
+   treatment for structural labels at 11px, not a generic template tell. */
+.label-caps {
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes panel-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px) scale(0.98);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  @keyframes row-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .animate-panel-in {
+    animation: panel-in 160ms ease-out;
+  }
+  .animate-row-in {
+    animation: row-in 200ms ease-out;
+  }
 }

@@ -83,6 +83,41 @@ async def add_watchlist_item(
     return {"watchlist_id": str(watchlist_id), "ticker": payload.ticker}
 
 
+@router.get("/{watchlist_id}/items")
+async def list_watchlist_items(watchlist_id: uuid.UUID, user_id: uuid.UUID = Depends(get_current_user)):
+    """Watchlist ticker membership — {ticker, name, sector} — independent
+    of whether a ticker currently has an active flag (the digest only
+    returns flagged tickers, which isn't the same as membership)."""
+    pool = get_pool()
+    await get_owned_watchlist(pool, watchlist_id, user_id)
+
+    rows = await pool.fetch(
+        """
+        SELECT t.ticker, t.name, t.sector
+        FROM watchlist_items wi
+        JOIN tickers t ON t.ticker = wi.ticker
+        WHERE wi.watchlist_id = $1
+        ORDER BY t.ticker ASC
+        """,
+        watchlist_id,
+    )
+    return [{"ticker": row["ticker"], "name": row["name"], "sector": row["sector"]} for row in rows]
+
+
+@router.delete("/{watchlist_id}/items/{ticker}")
+async def remove_watchlist_item(watchlist_id: uuid.UUID, ticker: str, user_id: uuid.UUID = Depends(get_current_user)):
+    """Idempotent — removing a ticker not currently in the watchlist is a
+    no-op, not an error, same idempotency stance as POST /items."""
+    pool = get_pool()
+    await get_owned_watchlist(pool, watchlist_id, user_id)
+
+    await pool.execute(
+        "DELETE FROM watchlist_items WHERE watchlist_id = $1 AND ticker = $2",
+        watchlist_id, ticker,
+    )
+    return {"watchlist_id": str(watchlist_id), "ticker": ticker}
+
+
 @router.get("/{watchlist_id}/digest")
 async def get_digest(
     watchlist_id: uuid.UUID, request: Request, response: Response, user_id: uuid.UUID = Depends(get_current_user)
