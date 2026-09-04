@@ -1,0 +1,30 @@
+# Reliability — failure scenarios and security review
+
+Reference for implementation and for Q&A answers. Do NOT try to narrate all of these live in the demo — see PRODUCT.md's demo time discipline note. Only #1/#2 combined-with-severity-escalation is a live beat; the rest are here so the behavior is correct and so you have a sharp answer if asked.
+
+| # | Scenario | Detection | User experience | Recovery | Integrity risk if wrong |
+|---|---|---|---|---|---|
+| 1 | Provider outage (kill-switch) | `get_status()` → UNAVAILABLE | "Data unavailable since Xm ago", last-known flags shown labeled stale, no new flags computed | `recover` → next tick resumes, incremental recompute for the gap | Scoring off nothing without gating it |
+| 2 | Stale timestamp (frozen clock) | `age_seconds` exceeds threshold via real clock math | STALE state, distinct from UNAVAILABLE | Unfreeze → reclassify to LIVE/RECENT | Must not let stale ticks feed a *new* z-score |
+| 3 | Severity escalates mid-session | `severity_rank` comparison on upsert | Flag reappears unacked at new severity | Ack-bust in same transaction (DATA_MODEL.md) | Highest integrity risk in the system — user misses a worsening situation |
+| 4 | Duplicate/out-of-order ticks | `UNIQUE(ticker, ts, source)` on `price_ticks` | Invisible if handled | DB-enforced dedup; late tick only recomputes baseline if still within the open trading day | Duplicate ticks corrupt `avg_volume_30d` silently |
+| 5 | Concurrent ack, two tabs | Handled by design | Stale-hash tab told "your view is behind" | `ON CONFLICT DO NOTHING` on ack insert | Low — safe by construction |
+| 6 | Recompute/ack race (Ghost-ETag shape) | Same class as the Groww precedent | Worst case: ack based on a value about to change | Ack-bust reads committed state only, one transaction, never a pre-commit hook | Highest-value scenario to narrate in Q&A — it's the cited precedent |
+| 7 | Market closed/weekend/holiday | Trading calendar check (hardcoded NSE holidays for demo window) | "Market closed — last session's data" | Gate whether "today" is a valid trading day at all | Scoring a non-trading day is nonsensical |
+| 8 | Insufficient baseline history | `sample_size` in `baselines` | "Not enough history to assess" | Scoring engine gates on `sample_size` before emitting a flag | A confident-looking flag off 3 days of data is worse than none |
+| 9 | Partial ingestion (scheduler dies mid-batch) | Per-ticker transactional batch, not all-or-nothing | Each ticker's freshness reflects its own last successful compute | Idempotent per-ticker upsert makes retry safe | A global "last updated" timestamp would mislead |
+| 10 | Timezone handling | All timestamps UTC internally, trading-day boundaries computed in `Asia/Kolkata` explicitly | N/A if correct | One conversion point, at ingestion only | Wrong-day bucketing silently breaks the UNIQUE constraint's semantics — worth a dedicated unit test |
+| 11 | Sector aggregation with missing members | Sector mean computed only over tickers with a valid tick this cycle | Sector tag omitted, not computed off partial data | Gate on "all sector members had a tick," else NULL | Partial averaging could mislabel stock-specific vs sector-wide |
+| 12 | Stale `If-None-Match` after days away | Server always recomputes hash server-side | Full digest returned, not 304 | Normal path, no special handling | None — should require zero special logic |
+| 13 | Fault endpoint hit outside demo | `DEMO_MODE` env flag | Endpoint doesn't exist (404/403) if unset | N/A | Must be structurally impossible outside demo builds |
+| 14 | Ack references a deleted/superseded flag | Existence check before insert | Partial success returned, bad id ignored | N/A | Silent full-request failure would be worse UX than partial success |
+
+## Security review (Tier 1 hackathon scope — see CLAUDE.md, do not over-build)
+- Single JWT demo account, 24h expiry. No multi-tenant RBAC needed.
+- Every watchlist-scoped endpoint checks `watchlist.user_id == current_user.id` — the one authz check that actually matters here.
+- Pydantic validation on every request body; ticker inputs validated against the known `tickers` table (rejects unsupported tickers as a side effect).
+- Basic per-IP rate limit on write endpoints (`/items`, `/ack`) only — not needed on `/digest`, naturally bounded by watchlist size.
+- Secrets via env vars, `.env` gitignored, `.env.example` committed with placeholder values only.
+- CORS locked to the deployed frontend origin, not `*`.
+- `/admin/fault` gated behind `DEMO_MODE=true`.
+- Explicitly out of scope, state as such in README: per-user rate tiers, WAF, secret rotation, audit logging beyond the flag-decision trail. Proportionate to a 72-hour submission.

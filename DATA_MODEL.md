@@ -1,0 +1,117 @@
+# Data model
+
+```sql
+tickers (
+  ticker           TEXT PRIMARY KEY,       -- e.g. 'RELIANCE.NS'
+  name             TEXT NOT NULL,
+  sector           TEXT NOT NULL,          -- hand-curated, small set
+  listed_since     DATE
+)
+
+price_ticks (
+  id               BIGSERIAL PRIMARY KEY,
+  ticker           TEXT REFERENCES tickers(ticker),
+  price            NUMERIC(12,4) NOT NULL,
+  volume           BIGINT,
+  ts               TIMESTAMPTZ NOT NULL,
+  source           TEXT NOT NULL,          -- real_historical / replay_simulated
+  UNIQUE (ticker, ts, source),              -- DB-enforced dedup, not app-layer check-then-insert
+  INDEX idx_ticker_ts (ticker, ts DESC)
+)
+
+baselines (
+  ticker           TEXT REFERENCES tickers(ticker),
+  as_of_date       DATE NOT NULL,
+  mean_return_30d  NUMERIC(10,6),
+  stdev_return_30d NUMERIC(10,6),
+  avg_volume_30d   NUMERIC(16,2),
+  stdev_5d         NUMERIC(10,6),
+  stdev_30d        NUMERIC(10,6),
+  sample_size      INT NOT NULL,           -- gates confidence: <20 days -> "not enough history"
+  PRIMARY KEY (ticker, as_of_date)
+)
+
+flags (
+  id               BIGSERIAL PRIMARY KEY,
+  ticker           TEXT REFERENCES tickers(ticker),
+  trading_day      DATE NOT NULL,
+  signal_type      TEXT NOT NULL,          -- 'price_zscore' | 'volatility_regime'
+  z_score          NUMERIC(6,3),
+  severity         TEXT NOT NULL,          -- notable/significant/extreme (display label)
+  severity_rank    SMALLINT NOT NULL,      -- notable=1, significant=2, extreme=3 — comparable
+  volume_ratio     NUMERIC(6,2),
+  sector_relative  TEXT,                   -- 'sector_wide' | 'stock_specific' | NULL
+  computed_at      TIMESTAMPTZ NOT NULL,
+  provider_state_at_computation TEXT,      -- audit trail
+  UNIQUE (ticker, trading_day, signal_type)
+)
+
+watchlists (
+  id UUID PRIMARY KEY, user_id UUID NOT NULL, name TEXT NOT NULL, created_at TIMESTAMPTZ DEFAULT now()
+)
+
+watchlist_items (
+  watchlist_id UUID REFERENCES watchlists(id),
+  ticker TEXT REFERENCES tickers(ticker),
+  added_at TIMESTAMPTZ DEFAULT now(),
+  PRIMARY KEY (watchlist_id, ticker)
+)
+
+watchlist_ack_state (
+  watchlist_id   UUID REFERENCES watchlists(id) PRIMARY KEY,
+  last_seen_hash TEXT NOT NULL,
+  last_seen_at   TIMESTAMPTZ NOT NULL
+)
+
+flag_ack (
+  flag_id      BIGINT REFERENCES flags(id),
+  watchlist_id UUID REFERENCES watchlists(id),
+  acked_at     TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (flag_id, watchlist_id)
+)
+
+provider_state (
+  id INT PRIMARY KEY DEFAULT 1, mode TEXT NOT NULL DEFAULT 'normal', frozen_at TIMESTAMPTZ, updated_at TIMESTAMPTZ
+)
+```
+
+## Why each table exists
+- `price_ticks` — immutable source of truth, needed to recompute anything after fault-recovery.
+- `baselines` — precomputed, not derived per-request (the "rebuild on every read" anti-pattern Groww's own Holdings post is about).
+- `flags` — durable record of *why* something was surfaced; required for the evidence endpoint and the uniqueness constraint that prevents duplicate flags.
+- `flag_ack` / `watchlist_ack_state` split deliberately: aggregate hash = cheap ETag-style short-circuit; per-flag table = fine-grained truth for "which specific things are new."
+
+## CRITICAL: severity-escalation must bust the ack
+`flags` upserts on `(ticker, trading_day, signal_type)`; `flag_ack` keys on the constant `flag_id`. Without this fix, a flag that escalates from "notable" to "extreme" intraday stays silently acked even though it's a genuinely new qualifying event.
+
+**Upsert (one transaction, both steps):**
+```sql
+INSERT INTO flags (ticker, trading_day, signal_type, z_score, severity, severity_rank, ...)
+VALUES (...)
+ON CONFLICT (ticker, trading_day, signal_type) DO UPDATE
+SET z_score = EXCLUDED.z_score, severity = EXCLUDED.severity,
+    severity_rank = EXCLUDED.severity_rank, computed_at = EXCLUDED.computed_at,
+    provider_state_at_computation = EXCLUDED.provider_state_at_computation
+WHERE EXCLUDED.severity_rank IS DISTINCT FROM flags.severity_rank OR flags.severity_rank IS NULL
+RETURNING id, severity_rank, (xmax = 0) AS was_insert;
+```
+```python
+# app-layer, same transaction as the upsert above:
+if not was_insert and new_severity_rank > previous_severity_rank:
+    DELETE FROM flag_ack WHERE flag_id = :flag_id
+# equal or lower rank -> leave flag_ack untouched, no-op
+```
+
+**Deliberate, asymmetric by design (state this in the README):** severity escalation busts the ack; de-escalation does not. An ack means "user has seen and dismissed this level of concern." Worse-than-dismissed is new information and must resurface. Better-than-dismissed has no new concern to raise — staying acked is correct, not an oversight.
+
+No API/query shape change needed — the existing "unacked flags" query in `GET /digest` picks up a resurfaced escalated flag for free once it no longer has a `flag_ack` row.
+
+## Key query — "what's changed since last check"
+```sql
+SELECT f.* FROM flags f
+JOIN watchlist_items wi ON wi.ticker = f.ticker
+LEFT JOIN flag_ack fa ON fa.flag_id = f.id AND fa.watchlist_id = wi.watchlist_id
+WHERE wi.watchlist_id = :wid AND fa.flag_id IS NULL
+ORDER BY f.z_score DESC;
+```
+At real scale, short-circuit first: compare `watchlist_ack_state.last_seen_hash` against a freshly computed aggregate hash — if equal, skip this join entirely (the 304-equivalent).
