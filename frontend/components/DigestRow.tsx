@@ -50,10 +50,13 @@ export function DigestRow({
   return (
     <article
       className={`animate-row-in group relative flex flex-col gap-4 bg-surface-raised px-4 py-5 transition-colors sm:px-6 md:flex-row md:items-start md:gap-6 ${
-        selected ? "bg-surface-hover" : "hover:bg-surface-hover"
+        selected ? "bg-cobalt/5 ring-1 ring-inset ring-cobalt/40" : "hover:bg-surface-hover"
       }`}
     >
-      <span aria-hidden="true" className={`absolute inset-y-0 left-0 w-[3px] ${SEVERITY_STRIPE[flag.severity]}`} />
+      <span
+        aria-hidden="true"
+        className={`absolute inset-y-0 left-0 ${selected ? "w-1 bg-cobalt" : `w-[3px] ${SEVERITY_STRIPE[flag.severity]}`}`}
+      />
 
       {/* Unusualness first — this is the point of the product. */}
       <div className="flex items-center gap-4 md:w-40 md:flex-shrink-0 md:flex-col md:items-start md:gap-1.5">
@@ -111,9 +114,14 @@ export function DigestRow({
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
             onClick={() => onSelect(flag)}
-            className="focus-ring inline-flex items-center gap-1 rounded-md border border-border bg-surface-raised px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:bg-surface-subtle"
+            aria-pressed={selected}
+            className={`focus-ring inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
+              selected
+                ? "border-cobalt bg-cobalt text-white hover:bg-cobalt/90"
+                : "border-border bg-surface-raised text-ink hover:bg-surface-subtle"
+            }`}
           >
-            Show evidence
+            {selected ? "Viewing evidence" : "Show evidence"}
             <ChevronRight className="size-4" aria-hidden="true" />
           </button>
           <button

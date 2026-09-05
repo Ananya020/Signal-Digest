@@ -183,7 +183,7 @@ export function EvidencePanel({
   }, [flag.id]);
 
   return (
-    <div className="fixed inset-0 z-10 flex items-stretch justify-end bg-ink/30" onClick={onClose}>
+    <div className="fixed inset-0 z-40 flex items-stretch justify-end bg-ink/30" onClick={onClose}>
       <div
         className="animate-panel-in flex w-full max-w-lg flex-col overflow-y-auto border-l border-border-strong bg-surface-raised shadow-[0_12px_32px_-4px_rgba(15,23,42,0.06),0_4px_8px_-2px_rgba(15,23,42,0.03)]"
         onClick={(e) => e.stopPropagation()}
