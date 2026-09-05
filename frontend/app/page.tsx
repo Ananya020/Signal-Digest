@@ -84,7 +84,7 @@ export default function Home() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6">
       <AppHeader onAboutClick={() => setAboutOpen(true)} />
 
-      <DigestBrief brief={viewed.data?.brief ?? null} />
+      <DigestBrief brief={viewed.data?.brief ?? null} flags={viewed.data?.flags ?? null} />
 
       {bootstrapError && (
         <div className="rounded-md bg-down-wash px-3 py-2 text-sm text-down-text">{bootstrapError}</div>
