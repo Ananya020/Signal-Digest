@@ -81,6 +81,44 @@ _UNACKED_FLAGS_SQL = """
 """
 
 
+# Step A ("since you last checked"): per flag_id, the most recent ack
+# snapshot — the live flag_ack row if currently acked, otherwise the most
+# recent flag_ack_history row if it was previously acked and since busted
+# by escalation. Never fabricates a baseline: a flag_id with neither simply
+# yields no row here, and the caller treats that as null.
+_SINCE_LAST_ACK_SQL = """
+    SELECT flag_id, severity_rank_at_ack, z_score_at_ack, acked_at FROM flag_ack
+    WHERE watchlist_id = $1 AND flag_id = ANY($2::bigint[])
+    UNION ALL
+    SELECT flag_id, severity_rank_at_ack, z_score_at_ack, acked_at FROM (
+        SELECT DISTINCT ON (flag_id) flag_id, severity_rank_at_ack, z_score_at_ack, acked_at
+        FROM flag_ack_history
+        WHERE watchlist_id = $1 AND flag_id = ANY($2::bigint[])
+        ORDER BY flag_id, superseded_at DESC
+    ) most_recent_history
+"""
+
+
+async def load_since_last_ack(pool: asyncpg.Pool, watchlist_id, flag_ids: list[int]) -> dict[int, asyncpg.Record]:
+    """Returns {flag_id: record} for whichever flags in `flag_ids` have a
+    live ack or prior ack history for this watchlist. A flag_id absent from
+    the returned dict has never been acked — no entry, not a null-valued
+    one, since there is genuinely nothing to report."""
+    if not flag_ids:
+        return {}
+    rows = await pool.fetch(_SINCE_LAST_ACK_SQL, watchlist_id, flag_ids)
+    # The live flag_ack branch and the history branch can't both match the
+    # same flag_id for flags this function is actually called with (digest
+    # rows are unacked by definition, so only the history branch fires in
+    # practice) — but if both ever did, prefer the more recent acked_at.
+    result: dict[int, asyncpg.Record] = {}
+    for row in rows:
+        existing = result.get(row["flag_id"])
+        if existing is None or row["acked_at"] > existing["acked_at"]:
+            result[row["flag_id"]] = row
+    return result
+
+
 def compute_aggregate_hash(pairs: list[tuple[int, int]]) -> str:
     """`pairs` need not be pre-sorted or deduplicated by the caller — sorting
     happens here so the hash is reproducible regardless of DB/query

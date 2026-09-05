@@ -32,11 +32,16 @@ async def test_ticker(db_pool):
         "Test",
     )
     yield symbol
-    # flags/flag_ack/watchlist_items FK-reference tickers — must clear those
-    # first. watchlist_items rows are created by Phase 3 tests via the API
-    # (no fixture "owns" them), and fixture teardown order isn't guaranteed
-    # relative to the watchlist fixture's own cleanup, so this fixture must
-    # defensively clear them itself before deleting the ticker.
+    # flags/flag_ack/flag_ack_history/watchlist_items FK-reference tickers —
+    # must clear those first. watchlist_items rows are created by Phase 3
+    # tests via the API (no fixture "owns" them), and fixture teardown order
+    # isn't guaranteed relative to the watchlist fixture's own cleanup, so
+    # this fixture must defensively clear them itself before deleting the
+    # ticker. flag_ack_history (Step A audit table) must go before flags for
+    # the same FK reason.
+    await db_pool.execute(
+        "DELETE FROM flag_ack_history WHERE flag_id IN (SELECT id FROM flags WHERE ticker = $1)", symbol
+    )
     await db_pool.execute(
         "DELETE FROM flag_ack WHERE flag_id IN (SELECT id FROM flags WHERE ticker = $1)", symbol
     )
@@ -57,6 +62,7 @@ async def test_watchlist(db_pool):
         watchlist_id, uuid.uuid4(), "Test Watchlist",
     )
     yield watchlist_id
+    await db_pool.execute("DELETE FROM flag_ack_history WHERE watchlist_id = $1", watchlist_id)
     await db_pool.execute("DELETE FROM flag_ack WHERE watchlist_id = $1", watchlist_id)
     await db_pool.execute("DELETE FROM watchlists WHERE id = $1", watchlist_id)
 
@@ -71,6 +77,7 @@ async def _make_watchlist(db_pool, user_id: uuid.UUID, name: str) -> uuid.UUID:
 
 
 async def _cleanup_watchlist(db_pool, watchlist_id: uuid.UUID) -> None:
+    await db_pool.execute("DELETE FROM flag_ack_history WHERE watchlist_id = $1", watchlist_id)
     await db_pool.execute("DELETE FROM flag_ack WHERE watchlist_id = $1", watchlist_id)
     await db_pool.execute("DELETE FROM watchlist_items WHERE watchlist_id = $1", watchlist_id)
     await db_pool.execute("DELETE FROM watchlists WHERE id = $1", watchlist_id)
@@ -114,6 +121,9 @@ async def test_ticker_2(db_pool):
         symbol, "Test Ticker 2", "Test",
     )
     yield symbol
+    await db_pool.execute(
+        "DELETE FROM flag_ack_history WHERE flag_id IN (SELECT id FROM flags WHERE ticker = $1)", symbol
+    )
     await db_pool.execute(
         "DELETE FROM flag_ack WHERE flag_id IN (SELECT id FROM flags WHERE ticker = $1)", symbol
     )

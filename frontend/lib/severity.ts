@@ -90,6 +90,26 @@ export function resolveRowStyle(severity: Severity, direction: Direction): Resol
   };
 }
 
+const SEVERITY_RANK_LABEL: Record<1 | 2 | 3, string> = { 1: "NOTABLE", 2: "SIGNIFICANT", 3: "EXTREME" };
+
+/** Step A: renders the "since you last checked" delta line, or null when
+ * there's nothing to show (no prior ack history, or an unchanged snapshot
+ * — the caller/API already filters the latter, but this stays defensive). */
+export function formatSinceLastAck(
+  current: { z_score: number | null; severity_rank: 1 | 2 | 3 },
+  since: { severity_rank_at_ack: 1 | 2 | 3 | null; z_score_at_ack: number | null } | null,
+): string | null {
+  if (!since) return null;
+  const currentZ = Math.abs(current.z_score ?? 0);
+  const priorZ = since.z_score_at_ack !== null ? Math.abs(since.z_score_at_ack) : null;
+  const zDelta = priorZ !== null ? currentZ - priorZ : null;
+  const zPart = zDelta !== null ? `${zDelta >= 0 ? "↑" : "↓"} ${Math.abs(zDelta).toFixed(1)}σ since you last checked` : "Since you last checked";
+  const priorLabel = since.severity_rank_at_ack !== null ? SEVERITY_RANK_LABEL[since.severity_rank_at_ack] : null;
+  const currentLabel = SEVERITY_RANK_LABEL[current.severity_rank];
+  const severityPart = priorLabel && priorLabel !== currentLabel ? ` · was ${priorLabel}, now ${currentLabel}` : "";
+  return `${zPart}${severityPart}`;
+}
+
 export interface BadgeConfig {
   label: string;
   icon: string;

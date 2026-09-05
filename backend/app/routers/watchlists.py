@@ -6,7 +6,7 @@ from app.auth import get_current_user
 from app.db import get_pool
 from app.schemas import AckRequest, WatchlistCreate, WatchlistItemCreate
 from app.services.brief import build_brief
-from app.services.digest import compute_digest
+from app.services.digest import compute_digest, load_since_last_ack
 from app.services.watchlist_access import get_owned_watchlist
 
 router = APIRouter(prefix="/watchlists", tags=["watchlists"])
@@ -23,7 +23,17 @@ def _normalize_if_none_match(header_value: str) -> str:
     return value.strip('"')
 
 
-def _serialize_flag(row) -> dict:
+def _serialize_since_last_ack(row) -> dict | None:
+    if row is None:
+        return None
+    return {
+        "severity_rank_at_ack": row["severity_rank_at_ack"],
+        "z_score_at_ack": float(row["z_score_at_ack"]) if row["z_score_at_ack"] is not None else None,
+        "acked_at": row["acked_at"].isoformat(),
+    }
+
+
+def _serialize_flag(row, since_last_ack_row=None) -> dict:
     return {
         "id": row["id"],
         "ticker": row["ticker"],
@@ -36,6 +46,10 @@ def _serialize_flag(row) -> dict:
         "sector_relative": row["sector_relative"],
         "computed_at": row["computed_at"].isoformat(),
         "provider_state_at_computation": row["provider_state_at_computation"],
+        # Step A: null unless this flag has prior ack history for this
+        # watchlist AND the snapshot actually differs from the current
+        # values — never fabricated for a first-time-unacked flag.
+        "since_last_ack": _serialize_since_last_ack(since_last_ack_row),
     }
 
 
@@ -136,13 +150,26 @@ async def get_digest(
     provider = request.app.state.provider
     provider_status = provider.get_status()
 
+    since_last_ack_map = await load_since_last_ack(pool, watchlist_id, [row["id"] for row in rows])
+
+    def _flag_since_last_ack(row):
+        snapshot = since_last_ack_map.get(row["id"])
+        if snapshot is None:
+            return None
+        # Only surface a delta when the snapshot actually differs from the
+        # flag's current values — a flag re-acked at the same severity/
+        # z_score has nothing new to show since last checked.
+        if snapshot["severity_rank_at_ack"] == row["severity_rank"] and snapshot["z_score_at_ack"] == row["z_score"]:
+            return None
+        return snapshot
+
     # UNAVAILABLE: still return the last-known unacked flags (never empty
     # the response), but never compute/fabricate anything new — the freshness
     # field + detail make it explicit that no new scoring occurred this cycle.
     return {
         "freshness": provider_status.state,
         "detail": provider_status.detail,
-        "flags": [_serialize_flag(row) for row in rows],
+        "flags": [_serialize_flag(row, _flag_since_last_ack(row)) for row in rows],
         # Deterministic template synthesis over these exact rows — no LLM,
         # no external call, read-only presentation layer computed AFTER the
         # digest (never feeds back into scoring/ranking/ack-bust). null when
@@ -163,14 +190,18 @@ async def ack_flags(watchlist_id: uuid.UUID, payload: AckRequest, user_id: uuid.
             # deleted/superseded flag_id is ignored, not a hard failure for
             # the whole request.
             existing = await conn.fetch(
-                "SELECT id FROM flags WHERE id = ANY($1::bigint[])", payload.flag_ids
+                "SELECT id, severity_rank, z_score FROM flags WHERE id = ANY($1::bigint[])", payload.flag_ids
             )
             valid_ids = [row["id"] for row in existing]
-            for flag_id in valid_ids:
+            for row in existing:
+                # Step A: snapshot the flag's current severity_rank/z_score
+                # at the moment of ack — the baseline "since you last
+                # checked" is later compared against.
                 await conn.execute(
-                    "INSERT INTO flag_ack (flag_id, watchlist_id, acked_at) VALUES ($1, $2, now()) "
+                    "INSERT INTO flag_ack (flag_id, watchlist_id, acked_at, severity_rank_at_ack, z_score_at_ack) "
+                    "VALUES ($1, $2, now(), $3, $4) "
                     "ON CONFLICT (flag_id, watchlist_id) DO NOTHING",
-                    flag_id, watchlist_id,
+                    row["id"], watchlist_id, row["severity_rank"], row["z_score"],
                 )
 
     # Server is authoritative — always recompute from committed state,

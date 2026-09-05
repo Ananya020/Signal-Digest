@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { Check, ChevronRight, Layers, Target } from "lucide-react";
 import { ACK_DWELL_MS, scheduleDwellAck } from "@/lib/dwell";
 import { explainFlag } from "@/lib/explain";
-import { directionFromFlag } from "@/lib/severity";
+import { directionFromFlag, formatSinceLastAck } from "@/lib/severity";
 import type { Flag, TickerInfo } from "@/lib/types";
 import { DirectionArrow, SeverityBadge } from "./SeverityBadge";
 
@@ -46,6 +46,7 @@ export function DigestRow({
   const dirTextClass = direction === "up" ? "text-up-strong" : "text-down-strong";
   const time = new Date(flag.computed_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const zScore = flag.z_score ?? 0;
+  const sinceLastAck = formatSinceLastAck(flag, flag.since_last_ack);
 
   return (
     <article
@@ -67,6 +68,7 @@ export function DigestRow({
           <DirectionArrow direction={direction} className={dirTextClass} />
         </div>
         <span className="text-xs text-ink-muted">{direction === "up" ? "above" : "below"} its normal range</span>
+        {sinceLastAck && <span className="text-xs font-medium text-cobalt">{sinceLastAck}</span>}
       </div>
 
       <div className="min-w-0 flex-1">

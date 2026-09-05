@@ -134,13 +134,38 @@ npm run dev   # http://localhost:3000
 
 ## 11. Testing
 
-**148 backend tests** (pytest, real Postgres — not mocks, for anything touching a transaction boundary) + **46 frontend tests** (vitest) = **194 tests**, all currently passing. A few that actually prove something non-obvious, not just exercise a happy path:
+**150 backend tests** (pytest, real Postgres — not mocks, for anything touching a transaction boundary) + **46 frontend unit/component tests** (vitest) = **196 tests**, all currently passing — plus one real end-to-end test (Playwright, below) that isn't counted in that number because it's a different tier entirely (a live browser against a live backend, not an isolated unit). A few that actually prove something non-obvious, not just exercise a happy path:
 
 - **The ack-bust escalation/de-escalation pair** (`test_flags_ack_bust.py`) — one test proves escalation busts the ack; a second, explicitly a "negative-space" test, proves de-escalation does *not* — the asymmetry in §6 is enforced code, not just a design doc claim.
 - **The `RETURNING`-behavior test from the Phase 2 correction** (`test_postgres_returning_yields_zero_rows_when_conflict_where_is_false`) — asserts, against real Postgres, the exact row-count `RETURNING` yields when an `ON CONFLICT DO UPDATE ... WHERE` clause evaluates false. That single fact is what caught the original ack-bust upsert conflating "should the ack be busted" with "should the evidence refresh" — a bug in the originally-documented SQL, caught before it shipped.
 - **The timezone boundary test** (`test_reliability_timezone.py`) — a tick timestamped 19:30 UTC (already 01:00 IST the next calendar day) must bucket into the correct IST trading day, not the UTC one. This test caught a real bug: `trading_day` was computed with `.date()` directly on a UTC-aware timestamp, masked in production data only because the real ingestion path happens to anchor at 15:30 IST — safely mid-day.
 - **The look-ahead-safety test for rolling baselines** (`test_compute_baseline_as_of_excludes_the_scored_day_own_move`) — seeds a violent price move on the exact day being scored and asserts that day's own baseline shows no trace of it, then cross-checks against the naive (look-ahead-*unsafe*) full-series computation to prove the difference is real, not incidental.
 - **The Today's Brief end-to-end test** (`test_brief_updates_as_flags_are_acked_down_to_one_then_zero`) — asserts the brief's template branch changes correctly as real flags are acked away: concentrated-sector wording with two active signals, the single-signal sentence once one remains, then `null` once the last one is acked — proving the brief tracks real committed digest state, not a snapshot taken once.
+
+### E2E demo rehearsal (Playwright)
+
+A single automated test (`frontend/e2e/demo-rehearsal.spec.ts`) walks the entire live demo script (see PROGRESS.md's "Canonical demo script") against a **real** running backend, **real** Postgres, and the **real** frontend — no mocks anywhere, since the whole point is catching real integration issues a mocked test can't. It proves demo-readiness is verifiable by running one command, not just by a human rehearsing it.
+
+**Run it:**
+```bash
+docker compose up -d postgres   # prerequisite — not started by the test itself
+cd frontend
+npm run test:e2e
+```
+Playwright starts the backend and frontend dev servers itself if they aren't already running (`reuseExistingServer: true` — it happily attaches to servers you already have up instead of double-starting; the backend it starts itself uses `DEMO_MODE=true` and a compressed `SCHEDULER_INTERVAL_SECONDS=2` for a faster rehearsal).
+
+**What it does, end to end, against real state:**
+1. Resets demo state (`scripts.reset_demo_state`) and fast-forwards **real** scoring (`scripts.run_scoring_once`) so the digest has real flags immediately.
+2. Loads the dashboard fresh — asserts `LIVE` freshness and a real flag row with a real rendered z-score.
+3. Opens the evidence panel — asserts the real computed mean/stdev/z-score stats render, not placeholders.
+4. Acknowledges that flag — asserts it disappears from the unacked view.
+5. Triggers Outage — asserts freshness flips to `UNAVAILABLE`; triggers Recover — asserts it returns to `LIVE`.
+6. Finds a real, not-yet-reached (ticker, trading day) that genuinely crosses `extreme` (a new helper, `scripts.find_escalation_candidate`, scans the real seeded history the same look-ahead-safe way the live pipeline scores it — dynamically, since where a fresh vs. long-running server's replay clock currently sits isn't knowable ahead of time), seeds the escalation-flip precondition (`scripts.seed_demo_escalation_precondition`), then waits for the **real live scheduler** to naturally reach that day and asserts the flag reappears unacknowledged at the exact severity/z-score the setup step independently pre-verified — not just "some flag appeared."
+7. Asserts Today's Brief updates to name that ticker, reflecting the real post-escalation state.
+
+**Verified real, twice**: two full runs (plus a third via the documented `npm run test:e2e` command) all passed, ~34s each. The escalation-wait step (6) is the one genuinely timing-sensitive part — bounded to 150s, not indefinite — but see the code comment on `waitByPullingInNewSignals` in the spec file for why a fixed sleep there would be the wrong tool: the digest deliberately buffers background updates behind a "Show N new signals" affordance (Stage 2 UX design), so the test polls and clicks that affordance on a short interval until the escalated flag actually renders, rather than guessing one delay.
+
+**A real bug found and fixed while building this test**: neither `scripts/seed_demo_escalation_precondition.py` nor the new `scripts/find_escalation_candidate.py` originally checked the scoring pipeline's own `sample_size < MIN_SAMPLE_SIZE` confidence gate before "verifying" a day's real severity — meaning either script could have picked a day the real pipeline would actually suppress, seeding a placeholder that could never be corrected (a live demo hanging on stage waiting for a flip that can't happen). Both now enforce the identical gate `score_price_zscore()` uses; regression-tested (`test_escalation_scripts_sample_size_gate.py`).
 
 ## 12. Known limitations
 

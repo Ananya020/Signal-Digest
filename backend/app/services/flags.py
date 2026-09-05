@@ -113,6 +113,20 @@ async def upsert_flag_with_ack_bust(conn: asyncpg.Connection, candidate: FlagCan
 
         ack_busted = False
         if not was_insert and previous_rank is not None and new_rank > previous_rank:
+            # Step A ("since you last checked"): snapshot the live ack row
+            # into the audit-only history table immediately before deleting
+            # it — same transaction, no change to the delete's condition,
+            # timing, or the transaction boundary itself.
+            await conn.execute(
+                """
+                INSERT INTO flag_ack_history (
+                    flag_id, watchlist_id, severity_rank_at_ack, z_score_at_ack, acked_at, superseded_at
+                )
+                SELECT flag_id, watchlist_id, severity_rank_at_ack, z_score_at_ack, acked_at, now()
+                FROM flag_ack WHERE flag_id = $1
+                """,
+                flag_id,
+            )
             await conn.execute("DELETE FROM flag_ack WHERE flag_id = $1", flag_id)
             ack_busted = True
         # Equal rank and de-escalation (new_rank <= previous_rank) both fall

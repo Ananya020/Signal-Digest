@@ -164,3 +164,65 @@ async def test_first_insert_never_busts_ack_because_nothing_was_acked_yet(db_poo
         result = await upsert_flag_with_ack_bust(conn, notable)
     assert result.was_insert is True
     assert result.ack_busted is False
+
+
+async def ack_flag_with_snapshot(db_pool, flag_id: int, watchlist_id, severity_rank: int, z_score: float) -> None:
+    """Mirrors what POST /ack actually does (app/routers/watchlists.py) —
+    the ack_flag() helper above predates Step A and leaves the snapshot
+    columns NULL, which is fine for the pre-Step-A tests above but wrong for
+    exercising the new history-copy behavior below."""
+    await db_pool.execute(
+        "INSERT INTO flag_ack (flag_id, watchlist_id, acked_at, severity_rank_at_ack, z_score_at_ack) "
+        "VALUES ($1, $2, now(), $3, $4)",
+        flag_id, watchlist_id, severity_rank, z_score,
+    )
+
+
+async def test_escalation_copies_pre_delete_ack_snapshot_to_history(db_pool, test_ticker, test_watchlist):
+    """Step A: immediately before the ack-bust DELETE, the live flag_ack
+    row's values must be copied into flag_ack_history with a superseded_at
+    timestamp — the existing delete's condition/timing/transaction boundary
+    must otherwise be unchanged (asserted by the still-passing tests above,
+    unmodified)."""
+    notable = make_candidate(test_ticker, severity="notable", severity_rank=1, z_score=2.1)
+    async with db_pool.acquire() as conn:
+        result1 = await upsert_flag_with_ack_bust(conn, notable)
+    await ack_flag_with_snapshot(db_pool, result1.id, test_watchlist, severity_rank=1, z_score=2.1)
+
+    extreme = replace(notable, severity="extreme", severity_rank=3, z_score=-4.2)
+    async with db_pool.acquire() as conn:
+        result2 = await upsert_flag_with_ack_bust(conn, extreme)
+    assert result2.ack_busted is True
+
+    history_row = await db_pool.fetchrow(
+        "SELECT severity_rank_at_ack, z_score_at_ack, superseded_at FROM flag_ack_history "
+        "WHERE flag_id = $1 AND watchlist_id = $2",
+        result1.id, test_watchlist,
+    )
+    assert history_row is not None
+    assert history_row["severity_rank_at_ack"] == 1
+    assert float(history_row["z_score_at_ack"]) == 2.1
+    assert history_row["superseded_at"] is not None
+
+    # The live row is still gone exactly as before Step A.
+    assert await is_acked(db_pool, result1.id, test_watchlist) is False
+
+
+async def test_deescalation_creates_no_history_entry_and_leaves_live_ack_untouched(db_pool, test_ticker, test_watchlist):
+    """Explicit non-goal regression test: de-escalation must not write to
+    flag_ack_history (nothing was busted, so nothing was superseded)."""
+    extreme = make_candidate(test_ticker, severity="extreme", severity_rank=3, z_score=3.6)
+    async with db_pool.acquire() as conn:
+        result1 = await upsert_flag_with_ack_bust(conn, extreme)
+    await ack_flag_with_snapshot(db_pool, result1.id, test_watchlist, severity_rank=3, z_score=3.6)
+
+    notable = replace(extreme, severity="notable", severity_rank=1, z_score=2.1)
+    async with db_pool.acquire() as conn:
+        result2 = await upsert_flag_with_ack_bust(conn, notable)
+    assert result2.ack_busted is False
+
+    history_row = await db_pool.fetchrow(
+        "SELECT 1 FROM flag_ack_history WHERE flag_id = $1 AND watchlist_id = $2", result1.id, test_watchlist
+    )
+    assert history_row is None
+    assert await is_acked(db_pool, result1.id, test_watchlist) is True

@@ -14,6 +14,11 @@ export interface Flag {
   sector_relative: "sector_wide" | "stock_specific" | null;
   computed_at: string;
   provider_state_at_computation: string;
+  /** Step A ("since you last checked"): the flag's severity_rank/z_score at
+   * the moment it was last acked, if this flag has prior ack history for
+   * this watchlist and the snapshot differs from its current values.
+   * `null` for a flag with no such history — never fabricated. */
+  since_last_ack: { severity_rank_at_ack: 1 | 2 | 3 | null; z_score_at_ack: number | null; acked_at: string } | null;
 }
 
 export interface DigestResponse {

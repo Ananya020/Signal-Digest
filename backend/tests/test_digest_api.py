@@ -129,7 +129,27 @@ async def test_escalation_ack_bust_still_works_on_the_flag_the_digest_surfaces(
     assert escalated.ack_busted is True
 
     resp_final = await client.get(f"/watchlists/{demo_watchlist}/digest")
-    assert [f["id"] for f in resp_final.json()["flags"]] == [shown_id]
+    flags_final = resp_final.json()["flags"]
+    assert [f["id"] for f in flags_final] == [shown_id]
+
+    # Step A: the resurfaced flag shows the pre-escalation snapshot, not
+    # the new post-escalation values.
+    since_last_ack = flags_final[0]["since_last_ack"]
+    assert since_last_ack is not None
+    assert since_last_ack["severity_rank_at_ack"] == 1
+    assert since_last_ack["z_score_at_ack"] == 2.2
+
+
+async def test_since_last_ack_is_null_for_a_flag_with_no_ack_history(client, db_pool, demo_watchlist, test_ticker):
+    """A flag that has never been acked has no baseline to compare
+    against — since_last_ack must be null, never fabricated."""
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    await insert_flag(db_pool, test_ticker, date(2026, 1, 1), severity_rank=1, z_score=2.1)
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    flags = resp.json()["flags"]
+    assert len(flags) == 1
+    assert flags[0]["since_last_ack"] is None
 
 
 async def test_digest_etag_full_sequence(client, db_pool, demo_watchlist, test_ticker):

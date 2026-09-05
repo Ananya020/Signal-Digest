@@ -53,7 +53,7 @@ from datetime import date, datetime, timezone
 import asyncpg
 
 from app.config import settings
-from app.data.baselines import compute_baseline_as_of
+from app.data.baselines import MIN_SAMPLE_SIZE, compute_baseline_as_of
 from app.data.tickers import to_nse_symbol
 from app.providers.historical_replay import load_history
 from app.services.scoring import compute_return, severity_band, z_score
@@ -81,6 +81,17 @@ async def verify_and_seed(
     baseline = compute_baseline_as_of(ticker, series, trading_day)
     if baseline is None:
         raise SystemExit(f"No look-ahead-safe baseline available for {ticker} as of {trading_day}.")
+    if baseline.sample_size < MIN_SAMPLE_SIZE:
+        # Must match score_price_zscore()'s own confidence gate exactly — a
+        # day the real pipeline would suppress (insufficient history) can
+        # never actually correct a seeded placeholder; the flip would never
+        # happen and the demo would hang waiting for it. Caught here rather
+        # than discovered live on stage.
+        raise SystemExit(
+            f"{ticker} on {trading_day} has sample_size={baseline.sample_size} < {MIN_SAMPLE_SIZE} — "
+            "the real pipeline would suppress this day entirely (not enough history), so seeding a "
+            "placeholder here would never actually get corrected. Choose a later trading_day."
+        )
 
     real_return = compute_return(series[idx - 1].price, series[idx].price)
     real_z = z_score(real_return, baseline.mean_return_30d, baseline.stdev_return_30d)
