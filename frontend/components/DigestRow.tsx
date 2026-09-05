@@ -5,7 +5,7 @@ import { Check, ChevronRight, Layers, Target } from "lucide-react";
 import { ACK_DWELL_MS, scheduleDwellAck } from "@/lib/dwell";
 import { explainFlag } from "@/lib/explain";
 import { directionFromFlag } from "@/lib/severity";
-import type { Flag } from "@/lib/types";
+import type { Flag, TickerInfo } from "@/lib/types";
 import { DirectionArrow, SeverityBadge } from "./SeverityBadge";
 
 const SEVERITY_STRIPE: Record<Flag["severity"], string> = {
@@ -16,11 +16,16 @@ const SEVERITY_STRIPE: Record<Flag["severity"], string> = {
 
 export function DigestRow({
   flag,
+  info,
   selected,
   onAck,
   onSelect,
 }: {
   flag: Flag;
+  /** Real ticker metadata (name/sector) from GET /tickers, looked up by the
+   * caller — Flag itself doesn't carry these, so this is undefined until
+   * the universe has loaded; the row degrades gracefully without it. */
+  info?: TickerInfo;
   selected?: boolean;
   onAck: (flagId: number) => void;
   onSelect: (flag: Flag) => void;
@@ -66,10 +71,15 @@ export function DigestRow({
           <button onClick={() => onSelect(flag)} className="focus-ring rounded">
             <h3 className="font-display text-base font-semibold tracking-tight text-ink">{bareTicker}</h3>
           </button>
+          {/* The seeded universe's `name` field is currently identical to the
+              bare ticker for every real ticker (no distinct company names in
+              this dataset) — guarded so it never renders a redundant
+              duplicate of the ticker text right next to it. */}
+          {info?.name && info.name !== bareTicker && <span className="truncate text-sm text-ink-muted">{info.name}</span>}
           <SeverityBadge severity={flag.severity} />
         </div>
 
-        {(flag.volume_ratio != null || flag.sector_relative != null) && (
+        {(flag.volume_ratio != null || flag.sector_relative != null || info?.sector) && (
           <dl className="mt-3 flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-ink-muted">
             {flag.volume_ratio != null && (
               <div className="flex items-center gap-1.5">
@@ -85,6 +95,12 @@ export function DigestRow({
                   <Layers className="size-3.5" aria-hidden="true" />
                 )}
                 <dd>{flag.sector_relative === "stock_specific" ? "Stock-specific move" : "Sector-wide move"}</dd>
+              </div>
+            )}
+            {info?.sector && (
+              <div className="hidden sm:block">
+                <dt className="sr-only">Sector</dt>
+                <dd>{info.sector}</dd>
               </div>
             )}
           </dl>

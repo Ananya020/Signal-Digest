@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity } from "lucide-react";
+import { Activity, Search } from "lucide-react";
 import type { ProviderStatus } from "@/lib/types";
 import { DemoControls } from "./DemoControls";
 import { FreshnessBanner } from "./FreshnessBanner";
@@ -8,23 +8,24 @@ import { FreshnessBanner } from "./FreshnessBanner";
 /** Product identity — a deliberate wordmark treatment, not a plain page
  * heading (Workstream 4, PRODUCT.md — kept exactly as delivered there).
  * Restyled to ui_reference.md's AppHeader structure around it: a sticky,
- * bordered bar with an icon badge, a right-aligned control cluster (About,
- * Demo controls, freshness), matching the reference's "wire everything
- * from Steps 1-10 together, last" role for this final step.
+ * bordered bar with an icon badge, a right-aligned control cluster (Add
+ * stock, About, Demo controls, freshness).
  *
  * ui_reference.md's watchlist switcher is not ported: this build has no
  * multi-watchlist workstream (bootstrap always attaches to the single
  * existing watchlist, see lib/bootstrap.ts) — a switcher over one item
  * would be inert UI, so it's omitted rather than shipped non-functional.
- * Its "Add stock" header search trigger is also omitted: WatchlistManager
- * already has its own real inline search — a second entry point to the
- * same action would be redundant, not additive. */
+ * "Add stock" is real, though: it doesn't open a second search UI, it just
+ * scrolls to and focuses WatchlistManager's own real search box (see
+ * app/page.tsx's `onAddStockClick`) — one real entry point, two ways in. */
 export function AppHeader({
   onAboutClick,
+  onAddStockClick,
   providerStatus,
   onFaultChanged,
 }: {
   onAboutClick: () => void;
+  onAddStockClick: () => void;
   providerStatus: ProviderStatus | null;
   onFaultChanged: () => void;
 }) {
@@ -50,6 +51,15 @@ export function AppHeader({
         </div>
 
         <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={onAddStockClick}
+            aria-label="Search or add a stock"
+            className="focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
+          >
+            <Search className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Add stock</span>
+          </button>
+
           <button
             onClick={onAboutClick}
             className="focus-ring shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"

@@ -1,7 +1,7 @@
 "use client";
 
 import { ShieldCheck } from "lucide-react";
-import type { Flag } from "@/lib/types";
+import type { Flag, TickerInfo } from "@/lib/types";
 import { DigestRow } from "./DigestRow";
 import { NewSignalsBanner } from "./NewSignalsBanner";
 import { SkeletonRows } from "./SkeletonRows";
@@ -11,6 +11,7 @@ export function DigestList({
   error,
   selectedFlagId,
   pendingNewCount,
+  tickerInfo,
   onPullInNew,
   onAck,
   onSelect,
@@ -19,6 +20,8 @@ export function DigestList({
   error: string | null;
   selectedFlagId?: number | null;
   pendingNewCount: number;
+  /** Real ticker metadata (name/sector) keyed by ticker, from GET /tickers. */
+  tickerInfo?: Record<string, TickerInfo>;
   onPullInNew: () => void;
   onAck: (flagId: number) => void;
   onSelect: (flag: Flag) => void;
@@ -59,6 +62,7 @@ export function DigestList({
             <DigestRow
               key={flag.id}
               flag={flag}
+              info={tickerInfo?.[flag.ticker]}
               selected={flag.id === selectedFlagId}
               onAck={onAck}
               onSelect={onSelect}

@@ -1,9 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import { History, Plus, Search, Trash2 } from "lucide-react";
 import { addWatchlistItem, listTickers, listWatchlistItems, removeWatchlistItem } from "@/lib/api";
 import type { TickerInfo } from "@/lib/types";
+
+/** Imperative handle exposed via ref so AppHeader's "Add stock" shortcut
+ * can focus this real search box directly, instead of duplicating a second
+ * search entry point/modal for the same action. */
+export interface WatchlistManagerHandle {
+  focusSearch: () => void;
+}
 
 /** Search/select to add a ticker plus a flat, removable list of current
  * membership, restyled to ui_reference.md's WatchlistPanel shell (card
@@ -12,13 +19,18 @@ import type { TickerInfo } from "@/lib/types";
  * GET /tickers/{ticker}/flags) — that content itself is wired in its own
  * later step. Digest polling already picks up membership changes on its
  * own interval — this component never forces a digest refresh itself. */
-export function WatchlistManager({
-  watchlistId,
-  onViewHistory,
-}: {
-  watchlistId: string;
-  onViewHistory: (ticker: string, name: string) => void;
-}) {
+export const WatchlistManager = forwardRef<
+  WatchlistManagerHandle,
+  { watchlistId: string; onViewHistory: (ticker: string, name: string) => void }
+>(function WatchlistManager({ watchlistId, onViewHistory }, ref) {
+  const searchRef = useRef<HTMLInputElement>(null);
+  useImperativeHandle(ref, () => ({
+    focusSearch: () => {
+      searchRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      searchRef.current?.focus();
+    },
+  }));
+
   const [items, setItems] = useState<TickerInfo[] | null>(null);
   const [universe, setUniverse] = useState<TickerInfo[] | null>(null);
   const [query, setQuery] = useState("");
@@ -98,6 +110,7 @@ export function WatchlistManager({
             aria-hidden="true"
           />
           <input
+            ref={searchRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             disabled={pending}
@@ -172,4 +185,4 @@ export function WatchlistManager({
       {error && <p className="px-4 pb-3 text-xs text-down-text">{error}</p>}
     </section>
   );
-}
+});

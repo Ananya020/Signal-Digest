@@ -7,13 +7,13 @@ import { DigestBrief } from "@/components/DigestBrief";
 import { DigestList } from "@/components/DigestList";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { HistoryPanel } from "@/components/HistoryPanel";
-import { WatchlistManager } from "@/components/WatchlistManager";
+import { WatchlistManager, type WatchlistManagerHandle } from "@/components/WatchlistManager";
 import { useDigest } from "@/hooks/useDigest";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
-import { ackFlags, fetchEvidence } from "@/lib/api";
+import { ackFlags, fetchEvidence, listTickers } from "@/lib/api";
 import { ensureBootstrapWatchlist } from "@/lib/bootstrap";
 import { EMPTY_DIGEST_POLL_STATE, newFlagIds, type DigestPollState } from "@/lib/digestPoll";
-import type { EvidenceResponse, Flag } from "@/lib/types";
+import type { EvidenceResponse, Flag, TickerInfo } from "@/lib/types";
 
 export default function Home() {
   const [watchlistId, setWatchlistId] = useState<string | null>(null);
@@ -54,6 +54,21 @@ export default function Home() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<{ ticker: string; name: string } | null>(null);
 
+  const [ackedCount, setAckedCount] = useState(0);
+
+  // Real ticker metadata (name/sector), keyed by ticker — Flag rows don't
+  // carry these, so it's cross-referenced from the real universe once.
+  const [tickerInfo, setTickerInfo] = useState<Record<string, TickerInfo>>({});
+  useEffect(() => {
+    listTickers()
+      .then((tickers) => setTickerInfo(Object.fromEntries(tickers.map((t) => [t.ticker, t]))))
+      .catch(() => {
+        // Non-critical — rows just fall back to ticker-only display.
+      });
+  }, []);
+
+  const watchlistManagerRef = useRef<WatchlistManagerHandle>(null);
+
   async function handleSelect(flag: Flag) {
     setSelectedFlag(flag);
     setEvidence(null);
@@ -72,6 +87,7 @@ export default function Home() {
   async function handleAck(flagId: number) {
     if (!watchlistId) return;
     await ackFlags(watchlistId, [flagId]);
+    setAckedCount((n) => n + 1);
     // Server is authoritative — refetch rather than optimistically mutate.
     // The hash just changed, so this poll gets a real 200, not a stale 304.
     const fresh = await pollOnce();
@@ -82,11 +98,12 @@ export default function Home() {
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6">
       <AppHeader
         onAboutClick={() => setAboutOpen(true)}
+        onAddStockClick={() => watchlistManagerRef.current?.focusSearch()}
         providerStatus={providerStatus}
         onFaultChanged={() => pollOnce()}
       />
 
-      <DigestBrief brief={viewed.data?.brief ?? null} flags={viewed.data?.flags ?? null} />
+      <DigestBrief brief={viewed.data?.brief ?? null} flags={viewed.data?.flags ?? null} ackedCount={ackedCount} />
 
       {bootstrapError && (
         <div className="rounded-md bg-down-wash px-3 py-2 text-sm text-down-text">{bootstrapError}</div>
@@ -94,6 +111,7 @@ export default function Home() {
 
       {watchlistId && (
         <WatchlistManager
+          ref={watchlistManagerRef}
           watchlistId={watchlistId}
           onViewHistory={(ticker, name) => setHistoryTarget({ ticker, name })}
         />
@@ -104,6 +122,7 @@ export default function Home() {
         error={digestError}
         selectedFlagId={selectedFlag?.id}
         pendingNewCount={pendingNewCount}
+        tickerInfo={tickerInfo}
         onPullInNew={() => setViewed(latest)}
         onAck={handleAck}
         onSelect={handleSelect}
