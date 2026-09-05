@@ -32,14 +32,104 @@ async def test_digest_orders_by_absolute_z_score_descending(client, db_pool, dem
     await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
     await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker_2})
 
-    low_id = await insert_flag(db_pool, test_ticker, date(2026, 2, 2), z_score=2.1)
     high_id = await insert_flag(db_pool, test_ticker_2, date(2026, 2, 2), z_score=-4.5)
     mid_id = await insert_flag(db_pool, test_ticker, date(2026, 2, 3), z_score=3.2)
 
     resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
     ids = [f["id"] for f in resp.json()["flags"]]
 
-    assert ids == [high_id, mid_id, low_id]  # |−4.5| > |3.2| > |2.1|
+    assert ids == [high_id, mid_id]  # |−4.5| > |3.2|
+
+
+async def test_digest_surfaces_only_the_most_severe_unacked_flag_per_ticker(
+    client, db_pool, demo_watchlist, test_ticker, test_ticker_2
+):
+    """Verified against real HDFCBANK data: a ticker can legitimately
+    accumulate many distinct-trading-day unacknowledged flags over time —
+    not a duplicate/timezone bug. The digest's job is "what needs your
+    attention right now", so only the single most-severe unacked flag per
+    ticker should occupy a digest slot; the rest remain real, unacked, and
+    reachable via GET /tickers/{ticker}/flags."""
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker_2})
+
+    older_weaker = await insert_flag(db_pool, test_ticker, date(2026, 1, 1), severity_rank=1, z_score=2.1)
+    newer_stronger = await insert_flag(db_pool, test_ticker, date(2026, 1, 15), severity_rank=3, z_score=-4.2)
+    other_ticker_flag = await insert_flag(db_pool, test_ticker_2, date(2026, 1, 10), severity_rank=1, z_score=2.3)
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    ids = [f["id"] for f in resp.json()["flags"]]
+
+    assert ids == [newer_stronger, other_ticker_flag]
+    assert older_weaker not in ids
+
+    # The suppressed flag is untouched in the DB — not deleted, not acked.
+    row = await db_pool.fetchrow(
+        "SELECT 1 FROM flags f LEFT JOIN flag_ack fa ON fa.flag_id = f.id WHERE f.id = $1 AND fa.flag_id IS NULL",
+        older_weaker,
+    )
+    assert row is not None
+
+    # And it's still visible through the real per-ticker history endpoint
+    # (that endpoint exposes trading_day/signal_type/z_score/severity, not
+    # id — see test_ticker_flags_api.py).
+    history_resp = await client.get(f"/tickers/{test_ticker}/flags")
+    history_days = {row["trading_day"] for row in history_resp.json()}
+    assert {"2026-01-01", "2026-01-15"} <= history_days
+
+
+async def test_escalation_ack_bust_still_works_on_the_flag_the_digest_surfaces(
+    client, db_pool, demo_watchlist, test_ticker
+):
+    """The suppression above must not interfere with the severity-escalation
+    ack-bust rule (flags.py) for whichever flag the digest actually shows —
+    that rule operates per flag row keyed by (ticker, trading_day,
+    signal_type), independent of digest visibility."""
+    from app.services.flags import upsert_flag_with_ack_bust
+    from app.services.scoring import FlagCandidate
+
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+
+    # An older, weaker, already-shown-and-acked flag stays in the background.
+    background_id = await insert_flag(db_pool, test_ticker, date(2026, 1, 1), severity_rank=1, z_score=2.1)
+    await client.post(f"/watchlists/{demo_watchlist}/ack", json={"flag_ids": [background_id]})
+
+    trading_day = date(2026, 1, 20)
+    async with db_pool.acquire() as conn:
+        result = await upsert_flag_with_ack_bust(
+            conn,
+            FlagCandidate(
+                ticker=test_ticker, trading_day=trading_day, signal_type="price_zscore",
+                z_score=2.2, severity="notable", severity_rank=1, volume_ratio=None,
+                sector_relative=None, computed_at=datetime.now(timezone.utc),
+                provider_state_at_computation="live",
+            ),
+        )
+    shown_id = result.id
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    assert [f["id"] for f in resp.json()["flags"]] == [shown_id]
+
+    await client.post(f"/watchlists/{demo_watchlist}/ack", json={"flag_ids": [shown_id]})
+    resp_after_ack = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    assert resp_after_ack.json()["flags"] == []
+
+    # Escalate the same flag (same ticker/trading_day/signal_type) — must bust its ack.
+    async with db_pool.acquire() as conn:
+        escalated = await upsert_flag_with_ack_bust(
+            conn,
+            FlagCandidate(
+                ticker=test_ticker, trading_day=trading_day, signal_type="price_zscore",
+                z_score=-4.0, severity="extreme", severity_rank=3, volume_ratio=None,
+                sector_relative=None, computed_at=datetime.now(timezone.utc),
+                provider_state_at_computation="live",
+            ),
+        )
+    assert escalated.id == shown_id
+    assert escalated.ack_busted is True
+
+    resp_final = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    assert [f["id"] for f in resp_final.json()["flags"]] == [shown_id]
 
 
 async def test_digest_etag_full_sequence(client, db_pool, demo_watchlist, test_ticker):
