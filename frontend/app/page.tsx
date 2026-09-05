@@ -6,8 +6,6 @@ import { AppHeader } from "@/components/AppHeader";
 import { DigestBrief } from "@/components/DigestBrief";
 import { DigestList } from "@/components/DigestList";
 import { EvidencePanel } from "@/components/EvidencePanel";
-import { FaultControl } from "@/components/FaultControl";
-import { FreshnessBanner } from "@/components/FreshnessBanner";
 import { HistoryPanel } from "@/components/HistoryPanel";
 import { WatchlistManager } from "@/components/WatchlistManager";
 import { useDigest } from "@/hooks/useDigest";
@@ -82,17 +80,17 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6">
-      <AppHeader onAboutClick={() => setAboutOpen(true)} />
+      <AppHeader
+        onAboutClick={() => setAboutOpen(true)}
+        providerStatus={providerStatus}
+        onFaultChanged={() => pollOnce()}
+      />
 
       <DigestBrief brief={viewed.data?.brief ?? null} flags={viewed.data?.flags ?? null} />
 
       {bootstrapError && (
         <div className="rounded-md bg-down-wash px-3 py-2 text-sm text-down-text">{bootstrapError}</div>
       )}
-
-      <FreshnessBanner status={providerStatus} />
-
-      {providerStatus?.demo_mode && <FaultControl status={providerStatus} onChanged={() => pollOnce()} />}
 
       {watchlistId && (
         <WatchlistManager

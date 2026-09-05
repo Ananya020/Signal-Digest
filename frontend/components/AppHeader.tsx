@@ -1,28 +1,73 @@
 "use client";
 
+import { Activity } from "lucide-react";
+import type { ProviderStatus } from "@/lib/types";
+import { DemoControls } from "./DemoControls";
+import { FreshnessBanner } from "./FreshnessBanner";
+
 /** Product identity — a deliberate wordmark treatment, not a plain page
- * heading. Uses design.md's own headline scale steps (headline-md on
- * mobile, headline-lg on desktop) rather than inventing a new type size,
- * and the tagline is PRODUCT.md's own stated core user promise, verbatim —
- * not new positioning. */
-export function AppHeader({ onAboutClick }: { onAboutClick: () => void }) {
+ * heading (Workstream 4, PRODUCT.md — kept exactly as delivered there).
+ * Restyled to ui_reference.md's AppHeader structure around it: a sticky,
+ * bordered bar with an icon badge, a right-aligned control cluster (About,
+ * Demo controls, freshness), matching the reference's "wire everything
+ * from Steps 1-10 together, last" role for this final step.
+ *
+ * ui_reference.md's watchlist switcher is not ported: this build has no
+ * multi-watchlist workstream (bootstrap always attaches to the single
+ * existing watchlist, see lib/bootstrap.ts) — a switcher over one item
+ * would be inert UI, so it's omitted rather than shipped non-functional.
+ * Its "Add stock" header search trigger is also omitted: WatchlistManager
+ * already has its own real inline search — a second entry point to the
+ * same action would be redundant, not additive. */
+export function AppHeader({
+  onAboutClick,
+  providerStatus,
+  onFaultChanged,
+}: {
+  onAboutClick: () => void;
+  providerStatus: ProviderStatus | null;
+  onFaultChanged: () => void;
+}) {
   return (
-    <header className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="font-display flex items-baseline gap-0.5 text-[20px] font-semibold leading-[28px] tracking-[-0.015em] sm:text-[28px] sm:leading-[36px] sm:tracking-[-0.02em]">
-          <span className="text-ink-muted">signal</span>
-          <span className="text-ink">Digest</span>
+    <header className="sticky top-0 z-30 -mx-4 border-b border-hairline bg-canvas/95 px-4 py-3 backdrop-blur sm:-mx-6 sm:px-6">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className="flex size-7 shrink-0 items-center justify-center rounded-md bg-cobalt text-white"
+            aria-hidden="true"
+          >
+            <Activity className="size-4" />
+          </span>
+          <div className="min-w-0">
+            <div className="font-display flex items-baseline gap-0.5 text-[18px] font-semibold leading-[24px] tracking-[-0.015em]">
+              <span className="text-ink-muted">signal</span>
+              <span className="text-ink">Digest</span>
+            </div>
+            <p className="hidden truncate text-[11px] text-ink-muted lg:block">
+              Know in five seconds what actually changed — not what always jitters — and why.
+            </p>
+          </div>
         </div>
-        <button
-          onClick={onAboutClick}
-          className="focus-ring shrink-0 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
-        >
-          About
-        </button>
+
+        <div className="ml-auto flex items-center gap-1">
+          <button
+            onClick={onAboutClick}
+            className="focus-ring shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
+          >
+            About
+          </button>
+
+          {providerStatus?.demo_mode && <DemoControls status={providerStatus} onChanged={onFaultChanged} />}
+
+          <div className="hidden border-l border-hairline pl-3 sm:block">
+            <FreshnessBanner status={providerStatus} />
+          </div>
+        </div>
+
+        <div className="w-full sm:hidden">
+          <FreshnessBanner status={providerStatus} />
+        </div>
       </div>
-      <p className="text-sm text-ink-muted">
-        Know in five seconds what actually changed — not what always jitters — and why.
-      </p>
     </header>
   );
 }
