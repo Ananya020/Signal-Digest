@@ -53,6 +53,19 @@
   --fresh-stale-wash: oklch(0.955 0.03 30);
   --fresh-unavailable: oklch(0.55 0.19 25);
   --fresh-unavailable-wash: oklch(0.958 0.03 25);
+
+  /* Severity's own hue scale (ui_reference.md) — used by the standalone
+     SeverityBadge/DirectionArrow components (Step 2): severity carries its
+     own color identity (neutral/amber/red), direction is a separate arrow
+     icon element. This is a different axis than resolveRowStyle's
+     hue-is-direction/intensity-is-severity model still used by the digest
+     row (that gets reconciled in its own later step). */
+  --notable: oklch(0.5 0.06 250);
+  --notable-soft: oklch(0.963 0.011 250);
+  --significant: oklch(0.58 0.13 62);
+  --significant-soft: oklch(0.965 0.035 70);
+  --extreme: oklch(0.51 0.19 20);
+  --extreme-soft: oklch(0.958 0.03 22);
 }
 
 @theme inline {
@@ -90,6 +103,13 @@
   --color-fresh-stale-wash: var(--fresh-stale-wash);
   --color-fresh-unavailable: var(--fresh-unavailable);
   --color-fresh-unavailable-wash: var(--fresh-unavailable-wash);
+
+  --color-notable: var(--notable);
+  --color-notable-soft: var(--notable-soft);
+  --color-significant: var(--significant);
+  --color-significant-soft: var(--significant-soft);
+  --color-extreme: var(--extreme);
+  --color-extreme-soft: var(--extreme-soft);
 
   --font-sans: var(--font-ibm-plex-sans);
   --font-display: var(--font-plus-jakarta);
