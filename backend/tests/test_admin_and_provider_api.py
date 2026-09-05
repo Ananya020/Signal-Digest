@@ -18,6 +18,75 @@ async def test_admin_fault_404s_when_demo_mode_unset(client, db_pool):
         await save_provider_state(db_pool, "normal", None)
 
 
+async def test_admin_fault_unaffected_by_demo_secret_when_it_is_unset(client, db_pool):
+    """Deployment hardening default: DEMO_SECRET unset (matching
+    .env.example / local dev) must leave /admin/fault's behavior identical
+    to before the hardening existed — no secret required at all."""
+    previous_mode, previous_secret = settings.demo_mode, settings.demo_secret
+    settings.demo_mode = True
+    settings.demo_secret = None
+    try:
+        resp = await client.post("/admin/fault", json={"mode": "stale"})
+        assert resp.status_code == 200
+    finally:
+        await client.post("/admin/fault", json={"mode": "recover"})
+        settings.demo_mode, settings.demo_secret = previous_mode, previous_secret
+
+
+async def test_admin_fault_404s_when_demo_secret_set_but_not_provided(client, db_pool):
+    previous_mode, previous_secret = settings.demo_mode, settings.demo_secret
+    settings.demo_mode = True
+    settings.demo_secret = "real-secret"
+    try:
+        resp = await client.post("/admin/fault", json={"mode": "outage"})
+        assert resp.status_code == 404
+    finally:
+        settings.demo_mode, settings.demo_secret = previous_mode, previous_secret
+        await save_provider_state(db_pool, "normal", None)
+
+
+async def test_admin_fault_404s_when_demo_secret_wrong(client, db_pool):
+    previous_mode, previous_secret = settings.demo_mode, settings.demo_secret
+    settings.demo_mode = True
+    settings.demo_secret = "real-secret"
+    try:
+        resp = await client.post(
+            "/admin/fault", json={"mode": "outage"}, headers={"X-Demo-Secret": "wrong-secret"}
+        )
+        assert resp.status_code == 404
+    finally:
+        settings.demo_mode, settings.demo_secret = previous_mode, previous_secret
+        await save_provider_state(db_pool, "normal", None)
+
+
+async def test_admin_fault_works_with_correct_demo_secret_via_header(client, db_pool):
+    previous_mode, previous_secret = settings.demo_mode, settings.demo_secret
+    settings.demo_mode = True
+    settings.demo_secret = "real-secret"
+    try:
+        resp = await client.post(
+            "/admin/fault", json={"mode": "stale"}, headers={"X-Demo-Secret": "real-secret"}
+        )
+        assert resp.status_code == 200
+    finally:
+        await client.post(
+            "/admin/fault", json={"mode": "recover"}, headers={"X-Demo-Secret": "real-secret"}
+        )
+        settings.demo_mode, settings.demo_secret = previous_mode, previous_secret
+
+
+async def test_admin_fault_works_with_correct_demo_secret_via_query_param(client, db_pool):
+    previous_mode, previous_secret = settings.demo_mode, settings.demo_secret
+    settings.demo_mode = True
+    settings.demo_secret = "real-secret"
+    try:
+        resp = await client.post("/admin/fault?demo_secret=real-secret", json={"mode": "stale"})
+        assert resp.status_code == 200
+    finally:
+        await client.post("/admin/fault?demo_secret=real-secret", json={"mode": "recover"})
+        settings.demo_mode, settings.demo_secret = previous_mode, previous_secret
+
+
 async def test_admin_fault_works_when_demo_mode_set(client, db_pool):
     previous = settings.demo_mode
     settings.demo_mode = True

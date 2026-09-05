@@ -7,6 +7,14 @@ class Settings(BaseSettings):
     demo_mode: bool = False
     frontend_origin: str = "http://localhost:3000"
 
+    # Deployment hardening, additive to demo_mode (see admin.py) — never a
+    # replacement for it. Unset (None/empty, the default, matching local
+    # dev's .env.example) disables the extra check entirely: /admin/fault
+    # behaves exactly as it always has, gated on demo_mode alone. Only a
+    # public deployment that sets a real value gains the extra shared-secret
+    # requirement. See DEPLOYMENT.md.
+    demo_secret: str | None = None
+
     # Freshness thresholds — demo-compressed (Phase 4). A production
     # deployment against real intraday/EOD equity data would reasonably use
     # minutes-scale thresholds (ARCHITECTURE.md's original 15s/2min/10min

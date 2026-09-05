@@ -72,7 +72,7 @@ flag_ack (
   PRIMARY KEY (flag_id, watchlist_id)
 )
 
--- Step A (2026-09-06), migrations/002_since_last_checked.sql — audit-only,
+-- Step A (2026-09-06), migrations/003_since_last_checked.sql — audit-only,
 -- never read by ack-bust logic (flags.py), never affects it. See the
 -- "since you last checked" section below.
 flag_ack_history (

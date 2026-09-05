@@ -113,7 +113,8 @@ signalDigest/
 │   ├── pytest.ini
 │   ├── migrations/
 │   │   ├── 001_init.sql     # numbered SQL files applied manually via `psql -f`, no migration tool for this build
-│   │   └── 002_add_last_successful_fetch.sql  # Phase 4 correction: persist provider_state.last_successful_fetch
+│   │   ├── 002_add_last_successful_fetch.sql  # Phase 4 correction: persist provider_state.last_successful_fetch
+│   │   └── 003_since_last_checked.sql  # Step A: flag_ack snapshot columns + flag_ack_history audit table
 │   ├── scripts/
 │   │   ├── seed_historical_data.py   # one-off manual backfill: yfinance -> tickers/price_ticks -> baselines
 │   │   ├── smoke_test_replay.py      # one-off manual check: replay real seeded data, confirm source='replay_simulated'
