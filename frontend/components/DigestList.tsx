@@ -3,6 +3,7 @@
 import { ShieldCheck } from "lucide-react";
 import type { Flag } from "@/lib/types";
 import { DigestRow } from "./DigestRow";
+import { NewSignalsBanner } from "./NewSignalsBanner";
 import { SkeletonRows } from "./SkeletonRows";
 
 export function DigestList({
@@ -32,14 +33,7 @@ export function DigestList({
 
   return (
     <section aria-labelledby="digest-heading" className="flex flex-col gap-3">
-      {pendingNewCount > 0 && (
-        <button
-          onClick={onPullInNew}
-          className="focus-ring flex w-full items-center justify-center rounded-md bg-cobalt-wash px-3 py-2 text-sm font-medium text-cobalt transition-colors hover:bg-cobalt/15"
-        >
-          Show {pendingNewCount} new signal{pendingNewCount > 1 ? "s" : ""}
-        </button>
-      )}
+      <NewSignalsBanner count={pendingNewCount} onReview={onPullInNew} />
 
       <div className="flex items-baseline justify-between px-1">
         <h2 id="digest-heading" className="eyebrow">
