@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from app.auth import get_current_user
 from app.db import get_pool
 from app.schemas import AckRequest, WatchlistCreate, WatchlistItemCreate
+from app.services.brief import build_brief
 from app.services.digest import compute_digest
 from app.services.watchlist_access import get_owned_watchlist
 
@@ -142,6 +143,12 @@ async def get_digest(
         "freshness": provider_status.state,
         "detail": provider_status.detail,
         "flags": [_serialize_flag(row) for row in rows],
+        # Deterministic template synthesis over these exact rows — no LLM,
+        # no external call, read-only presentation layer computed AFTER the
+        # digest (never feeds back into scoring/ranking/ack-bust). null when
+        # there are zero active signals; the frontend's existing calm
+        # empty-state copy handles that case, not this field.
+        "brief": build_brief(rows),
     }
 
 

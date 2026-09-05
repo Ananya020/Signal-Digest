@@ -10,7 +10,13 @@ import type { TickerInfo } from "@/lib/types";
  * dividers) rather than a distinct visual style. Digest polling already
  * picks up membership changes on its own interval — this component never
  * forces a digest refresh itself. */
-export function WatchlistManager({ watchlistId }: { watchlistId: string }) {
+export function WatchlistManager({
+  watchlistId,
+  onViewHistory,
+}: {
+  watchlistId: string;
+  onViewHistory: (ticker: string, name: string) => void;
+}) {
   const [items, setItems] = useState<TickerInfo[] | null>(null);
   const [universe, setUniverse] = useState<TickerInfo[] | null>(null);
   const [selected, setSelected] = useState("");
@@ -106,14 +112,23 @@ export function WatchlistManager({ watchlistId }: { watchlistId: string }) {
               <span className="text-xs text-ink">
                 {item.ticker.replace(/\.NS$/, "")} <span className="text-ink-muted">({item.sector})</span>
               </span>
-              <button
-                onClick={() => handleRemove(item.ticker)}
-                disabled={pending}
-                title={`Remove ${item.ticker}`}
-                className="focus-ring rounded text-xs text-ink-muted transition-colors hover:text-down-text disabled:opacity-50"
-              >
-                Remove
-              </button>
+              <span className="flex items-center gap-2">
+                <button
+                  onClick={() => onViewHistory(item.ticker, item.name)}
+                  title={`View history for ${item.ticker}`}
+                  className="focus-ring rounded text-xs text-ink-muted transition-colors hover:text-cobalt"
+                >
+                  View history
+                </button>
+                <button
+                  onClick={() => handleRemove(item.ticker)}
+                  disabled={pending}
+                  title={`Remove ${item.ticker}`}
+                  className="focus-ring rounded text-xs text-ink-muted transition-colors hover:text-down-text disabled:opacity-50"
+                >
+                  Remove
+                </button>
+              </span>
             </li>
           ))}
         </ul>

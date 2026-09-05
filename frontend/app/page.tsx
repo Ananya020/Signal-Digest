@@ -1,10 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { AboutPanel } from "@/components/AboutPanel";
+import { AppHeader } from "@/components/AppHeader";
+import { DigestBrief } from "@/components/DigestBrief";
 import { DigestList } from "@/components/DigestList";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { FaultControl } from "@/components/FaultControl";
 import { FreshnessBanner } from "@/components/FreshnessBanner";
+import { HistoryPanel } from "@/components/HistoryPanel";
 import { WatchlistManager } from "@/components/WatchlistManager";
 import { useDigest } from "@/hooks/useDigest";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
@@ -50,6 +54,9 @@ export default function Home() {
   const [evidenceLoading, setEvidenceLoading] = useState(false);
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
+  const [aboutOpen, setAboutOpen] = useState(false);
+  const [historyTarget, setHistoryTarget] = useState<{ ticker: string; name: string } | null>(null);
+
   async function handleSelect(flag: Flag) {
     setSelectedFlag(flag);
     setEvidence(null);
@@ -76,12 +83,9 @@ export default function Home() {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6">
-      <header className="flex flex-col gap-1">
-        <h1 className="font-display text-[20px] font-semibold leading-[28px] tracking-[-0.015em] text-ink">
-          Signal Digest
-        </h1>
-        <p className="text-sm text-ink-muted">Statistically unusual moves across your watchlist.</p>
-      </header>
+      <AppHeader onAboutClick={() => setAboutOpen(true)} />
+
+      <DigestBrief brief={viewed.data?.brief ?? null} />
 
       {bootstrapError && (
         <div className="rounded-md bg-down-wash px-3 py-2 text-sm text-down-text">{bootstrapError}</div>
@@ -91,7 +95,12 @@ export default function Home() {
 
       {providerStatus?.demo_mode && <FaultControl status={providerStatus} onChanged={() => pollOnce()} />}
 
-      {watchlistId && <WatchlistManager watchlistId={watchlistId} />}
+      {watchlistId && (
+        <WatchlistManager
+          watchlistId={watchlistId}
+          onViewHistory={(ticker, name) => setHistoryTarget({ ticker, name })}
+        />
+      )}
 
       <DigestList
         flags={viewed.data?.flags ?? null}
@@ -110,6 +119,16 @@ export default function Home() {
           loading={evidenceLoading}
           error={evidenceError}
           onClose={() => setSelectedFlag(null)}
+        />
+      )}
+
+      {aboutOpen && <AboutPanel onClose={() => setAboutOpen(false)} />}
+
+      {historyTarget && (
+        <HistoryPanel
+          ticker={historyTarget.ticker}
+          name={historyTarget.name}
+          onClose={() => setHistoryTarget(null)}
         />
       )}
     </div>

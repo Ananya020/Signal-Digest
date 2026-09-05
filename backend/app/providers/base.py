@@ -9,7 +9,7 @@ class Tick(BaseModel):
     price: float
     volume: int
     timestamp: datetime
-    source: Literal["real_historical", "replay_simulated", "fault_injected"]
+    source: Literal["real_historical", "replay_simulated", "fault_injected", "live_delayed_unofficial"]
 
 
 class ProviderStatus(BaseModel):

@@ -41,9 +41,10 @@ EMPTY_DIGEST_HASH = hashlib.sha256(EMPTY_DIGEST_SERIALIZED.encode("utf-8")).hexd
 _UNACKED_FLAGS_SQL = """
     SELECT f.id, f.ticker, f.trading_day, f.signal_type, f.z_score,
            f.severity, f.severity_rank, f.volume_ratio, f.sector_relative,
-           f.computed_at, f.provider_state_at_computation
+           f.computed_at, f.provider_state_at_computation, t.sector
     FROM flags f
     JOIN watchlist_items wi ON wi.ticker = f.ticker
+    JOIN tickers t ON t.ticker = f.ticker
     LEFT JOIN flag_ack fa ON fa.flag_id = f.id AND fa.watchlist_id = wi.watchlist_id
     WHERE wi.watchlist_id = $1 AND fa.flag_id IS NULL AND f.signal_type = 'price_zscore'
     ORDER BY abs(f.z_score) DESC

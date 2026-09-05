@@ -8,6 +8,7 @@ from app.config import settings
 from app.db import connect_db, disconnect_db, get_pool
 from app.providers.fault_injecting import FaultInjectingProvider
 from app.providers.historical_replay import HistoricalReplayProvider, ReplayClock, load_history
+from app.providers.live_delayed_nse import LiveDelayedNSEProvider
 from app.routers import admin, health, provider_status, tickers, watchlists
 from app.services.scoring_pipeline import ALL_TICKERS, SECTOR_BY_NSE_TICKER, run_scoring_cycle
 
@@ -28,6 +29,22 @@ async def lifespan(app: FastAPI):
     )
     await provider.sync_from_db(pool)  # restore fault mode across a process restart
     app.state.provider = provider
+
+    # Workstream 3: separate, opt-in, additive-only provider — never
+    # replaces `app.state.provider` above (the demo/scoring pipeline's
+    # dependency), never wired into the scheduler below. `None` when
+    # disabled, so any accidental access fails loudly rather than silently
+    # doing something. See PRODUCT.md's "Data source" section.
+    app.state.live_provider = (
+        LiveDelayedNSEProvider(
+            live_seconds=settings.freshness_live_seconds,
+            recent_seconds=settings.freshness_recent_seconds,
+            delayed_seconds=settings.freshness_delayed_seconds,
+            stale_seconds=settings.freshness_stale_seconds,
+        )
+        if settings.live_provider_enabled
+        else None
+    )
 
     scheduler = AsyncIOScheduler()
 

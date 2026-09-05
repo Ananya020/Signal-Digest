@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     freshness_delayed_seconds: float = 30
     freshness_stale_seconds: float = 30
 
+    # Workstream 3: opt-in, additive-only second provider (LiveDelayedNSEProvider).
+    # Orthogonal to demo_mode/fault injection — never enabled by default, never
+    # wired into scoring. See PRODUCT.md's "Data source" section.
+    live_provider_enabled: bool = False
+
     scheduler_interval_seconds: float = 5
     # Test-only escape hatch: the provider is always constructed (digest/
     # status endpoints need it), but the live background job is skippable

@@ -2,6 +2,7 @@ import type {
   DigestResponse,
   EvidenceResponse,
   FaultMode,
+  HistoricalFlag,
   ProviderStatus,
   TickerInfo,
   Watchlist,
@@ -108,5 +109,13 @@ export async function fetchEvidence(ticker: string, flagId: number): Promise<Evi
 
 export async function listTickers(): Promise<TickerInfo[]> {
   const res = await fetch(`${BASE_URL}/tickers`);
+  return json(res);
+}
+
+/** The ticker's full historical audit trail — every recorded flag, reverse
+ * chronological, independent of watchlist membership or ack state. Distinct
+ * from the digest (current, unacked, watchlist-scoped). */
+export async function fetchTickerFlags(ticker: string): Promise<HistoricalFlag[]> {
+  const res = await fetch(`${BASE_URL}/tickers/${ticker}/flags`);
   return json(res);
 }

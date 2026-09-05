@@ -11,10 +11,25 @@ const UNIVERSE = [
   { ticker: "INFY.NS", name: "Infosys", sector: "IT" },
 ];
 
+const noop = () => {};
+
 describe("WatchlistManager", () => {
   beforeEach(() => {
     vi.resetAllMocks();
     vi.mocked(api.listTickers).mockResolvedValue(UNIVERSE);
+  });
+
+  it("clicking View history on a listed ticker navigates to that ticker's history", async () => {
+    vi.mocked(api.listWatchlistItems).mockResolvedValue([
+      { ticker: "RELIANCE.NS", name: "Reliance Industries", sector: "Energy/Materials" },
+    ]);
+    const onViewHistory = vi.fn();
+
+    render(<WatchlistManager watchlistId="wl-1" onViewHistory={onViewHistory} />);
+    await waitFor(() => expect(screen.getByText(/RELIANCE/)).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTitle("View history for RELIANCE.NS"));
+    expect(onViewHistory).toHaveBeenCalledWith("RELIANCE.NS", "Reliance Industries");
   });
 
   it("excludes tickers already in the watchlist from the add options", async () => {
@@ -22,7 +37,7 @@ describe("WatchlistManager", () => {
       { ticker: "RELIANCE.NS", name: "Reliance Industries", sector: "Energy/Materials" },
     ]);
 
-    render(<WatchlistManager watchlistId="wl-1" />);
+    render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
 
     await waitFor(() => expect(screen.getByText(/RELIANCE/)).toBeInTheDocument());
 
@@ -37,7 +52,7 @@ describe("WatchlistManager", () => {
     vi.mocked(api.listWatchlistItems).mockResolvedValue([]);
     vi.mocked(api.addWatchlistItem).mockResolvedValue(undefined);
 
-    render(<WatchlistManager watchlistId="wl-1" />);
+    render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
     await waitFor(() => expect(screen.getByLabelText("Add a ticker to your watchlist")).toBeInTheDocument());
 
     const select = screen.getByLabelText("Add a ticker to your watchlist") as HTMLSelectElement;
@@ -53,7 +68,7 @@ describe("WatchlistManager", () => {
     ]);
     vi.mocked(api.removeWatchlistItem).mockResolvedValue(undefined);
 
-    render(<WatchlistManager watchlistId="wl-1" />);
+    render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
     await waitFor(() => expect(screen.getByText(/RELIANCE/)).toBeInTheDocument());
 
     fireEvent.click(screen.getByTitle("Remove RELIANCE.NS"));
@@ -65,7 +80,7 @@ describe("WatchlistManager", () => {
     vi.mocked(api.listWatchlistItems).mockResolvedValue([]);
     vi.mocked(api.addWatchlistItem).mockResolvedValue(undefined);
 
-    render(<WatchlistManager watchlistId="wl-1" />);
+    render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
     await waitFor(() => expect(screen.getByLabelText("Add a ticker to your watchlist")).toBeInTheDocument());
 
     fireEvent.change(screen.getByLabelText("Add a ticker to your watchlist"), { target: { value: "TCS.NS" } });

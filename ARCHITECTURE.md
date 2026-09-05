@@ -34,7 +34,7 @@ class Tick(BaseModel):
     price: float
     volume: int
     timestamp: datetime
-    source: Literal["real_historical", "replay_simulated", "fault_injected"]
+    source: Literal["real_historical", "replay_simulated", "fault_injected", "live_delayed_unofficial"]
 
 class ProviderStatus(BaseModel):
     state: Literal["LIVE", "RECENT", "DELAYED", "STALE", "UNAVAILABLE"]
@@ -71,6 +71,7 @@ class MarketDataProvider(Protocol):
    - `provider_state` (mode, frozen_at, **and `last_successful_fetch`**) persists across a process restart — corrected after an empirically-verified bug: freshness depends only on `age = now - last_successful_fetch`, so an earlier version that persisted just mode/frozen_at let a restart during a genuine `stale` fault report `LIVE` immediately after (see PROGRESS.md). All three fields now persist together via `FaultInjectingProvider.persist()`, called on every fault change and every scheduler tick. Concurrent `/admin/fault` calls are last-write-wins, a single UPSERT on the fixed `id=1` row, no locking.
 
 This exercises the exact same code path a real outage would hit — that's what makes the live demo defensible under "is that faked?" scrutiny. Verified live end-to-end (see PROGRESS.md) with a scheduler-driven severity-escalation-flip; note the architectural finding there that genuine same-key escalation requires a constructed precondition under this project's daily-close (not intraday) replay granularity.
+3. `LiveDelayedNSEProvider` (`backend/app/providers/live_delayed_nse.py`) — Workstream 3, optional, additive, off by default (`LIVE_PROVIDER_ENABLED`, orthogonal to `DEMO_MODE`). Fetches each ticker's latest intraday bar via `yfinance` (an unofficial, undocumented-for-this-use but real, verified-working source — see PRODUCT.md's "Data source" section), tagging emitted ticks `source="live_delayed_unofficial"`. Implements the same `MarketDataProvider` protocol with zero new error-handling: `get_status()` reuses `classify_freshness()` exactly like `FaultInjectingProvider` — `UNAVAILABLE` before any fetch has ever succeeded, `STALE` once `age_seconds` grows past the same configured thresholds. Never wired into `app.state.provider`/the scheduler/scoring — reachable only via `GET /provider/live-status`, on demand, status-only (see PRODUCT.md for why: not scoring off it is a deliberate correctness call, not an oversight).
 
 ## API design
 
@@ -86,6 +87,7 @@ This exercises the exact same code path a real outage would hit — that's what 
 | POST | `/watchlists/{id}/ack` | ack specific flag IDs | `{flag_ids: [...]}` — no client-supplied hash accepted; server always recomputes authoritative hash, never trusts client's. Phase 3 implemented; `ignored` entries are `{id, reason}` objects (Phase 3 correction). |
 | GET | `/tickers/{ticker}/evidence?flag_id=` | "show your work" data | `{ticker, window_start, window_end, mean_return, stdev_return, points: [{date, return, price}], flagged_point: {date, return, z_score}}` — frontend draws directly, no client-side stats recomputation. Phase 3 implemented (`app/services/evidence.py`); `mean_return`/`stdev_return`/`points` come from the exact same baseline row (`load_latest_baseline`) that produced the flag's stored `z_score` — not independently recomputed — so the displayed band and the displayed z_score are always algebraically consistent (reproducible within floating-point tolerance, tested). The flagged day's own return is fetched separately and may fall outside the plotted `points` window, since the baseline is static (Phase 2). |
 | GET | `/provider/status` | current freshness state | Phase 4 implemented (`app/routers/provider_status.py`). `age_seconds` computed live from real wall-clock time on every call, never cached. Polled every 3s for the freshness banner (Phase 5). Phase 5 added `demo_mode: bool` (same flag `/admin/fault` is gated behind) so the frontend knows whether to render the fault-injection control without guessing/hardcoding. |
+| GET | `/provider/live-status` | `LiveDelayedNSEProvider` status + one ticker's latest tick | Workstream 3. Gated behind `LIVE_PROVIDER_ENABLED` at the route level — 404s unconditionally when unset, same convention as `/admin/fault`'s `DEMO_MODE` gate. Attempts one real fetch per call; never touches scoring/baselines. `?ticker=` optional, defaults to the first ticker in the universe. |
 | POST | `/admin/fault` | demo-only fault injection | Phase 4 implemented (`app/routers/admin.py`). `{"mode": "outage"\|"stale"\|"recover"}`. Gated behind `DEMO_MODE` at the route level — 404 unconditionally if unset, checked before touching the provider or DB. Updates `provider_state`, last-write-wins (no locking). |
 | GET | `/metrics` | ETag short-circuit rate (stretch) | |
 
@@ -133,7 +135,8 @@ signalDigest/
 │       ├── providers/
 │       │   ├── base.py               # Tick, ProviderStatus, MarketDataProvider protocol
 │       │   ├── historical_replay.py  # HistoricalReplayProvider + ReplayClock (+get_previous_price, Phase 4)
-│       │   └── fault_injecting.py    # FaultInjectingProvider decorator (Phase 4)
+│       │   ├── fault_injecting.py    # FaultInjectingProvider decorator (Phase 4)
+│       │   └── live_delayed_nse.py   # LiveDelayedNSEProvider — Workstream 3, optional, additive, status-only
 │       ├── services/
 │       │   ├── scoring.py            # deterministic scoring engine (Phase 2)
 │       │   ├── flags.py              # severity-escalation ack-bust upsert (Phase 2)

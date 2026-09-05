@@ -20,6 +20,10 @@ export interface DigestResponse {
   freshness: Freshness;
   detail: string;
   flags: Flag[];
+  /** Deterministic template synthesis over `flags` — no LLM, computed
+   * server-side. `null` when there are zero active signals; render the
+   * existing calm empty-state copy in that case, not this field. */
+  brief: string | null;
 }
 
 export interface ProviderStatus {
@@ -59,3 +63,13 @@ export interface TickerInfo {
 }
 
 export type FaultMode = "outage" | "stale" | "recover";
+
+/** One row of a ticker's historical audit trail (`GET /tickers/{ticker}/flags`)
+ * — deliberately a narrower shape than `Flag`: only the fields the History
+ * panel actually shows, not the full flags-table row. */
+export interface HistoricalFlag {
+  trading_day: string;
+  signal_type: "price_zscore" | "volatility_regime";
+  z_score: number | null;
+  severity: Severity;
+}
