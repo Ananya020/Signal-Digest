@@ -1,5 +1,6 @@
 "use client";
 
+import { ShieldCheck } from "lucide-react";
 import type { Flag } from "@/lib/types";
 import { DigestRow } from "./DigestRow";
 import { SkeletonRows } from "./SkeletonRows";
@@ -7,6 +8,7 @@ import { SkeletonRows } from "./SkeletonRows";
 export function DigestList({
   flags,
   error,
+  selectedFlagId,
   pendingNewCount,
   onPullInNew,
   onAck,
@@ -14,6 +16,7 @@ export function DigestList({
 }: {
   flags: Flag[] | null;
   error: string | null;
+  selectedFlagId?: number | null;
   pendingNewCount: number;
   onPullInNew: () => void;
   onAck: (flagId: number) => void;
@@ -27,12 +30,8 @@ export function DigestList({
     );
   }
 
-  if (flags === null) {
-    return <SkeletonRows />;
-  }
-
   return (
-    <div className="flex flex-col gap-3">
+    <section aria-labelledby="digest-heading" className="flex flex-col gap-3">
       {pendingNewCount > 0 && (
         <button
           onClick={onPullInNew}
@@ -42,17 +41,37 @@ export function DigestList({
         </button>
       )}
 
-      {/* Anti-Container Architecture (design.md): edge-to-edge rows with
-          hairline dividers, no nested bordered card wrapping the list. */}
-      {flags.length === 0 ? (
-        <div className="px-3 py-10 text-center text-sm text-ink-muted">Nothing unusual right now. All caught up.</div>
-      ) : (
-        <ul>
-          {flags.map((flag) => (
-            <DigestRow key={flag.id} flag={flag} onAck={onAck} onSelect={onSelect} />
-          ))}
-        </ul>
-      )}
-    </div>
+      <div className="flex items-baseline justify-between px-1">
+        <h2 id="digest-heading" className="eyebrow">
+          Signal digest
+        </h2>
+        <p className="text-xs text-ink-muted">Ordered by how unusual, not by size of move</p>
+      </div>
+
+      <div className="divide-y divide-hairline overflow-hidden rounded-xl border border-border shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        {flags === null ? (
+          <SkeletonRows />
+        ) : flags.length === 0 ? (
+          <div className="flex flex-col items-center gap-3 bg-surface-raised px-6 py-16 text-center">
+            <ShieldCheck className="size-8 text-cobalt" aria-hidden="true" />
+            <h3 className="font-display text-lg font-semibold text-ink">Nothing unusual right now</h3>
+            <p className="max-w-sm text-sm text-ink-muted">
+              Your watchlist is behaving within its normal range. We&apos;ll surface a signal the moment a
+              stock moves beyond 2σ of its own recent behavior.
+            </p>
+          </div>
+        ) : (
+          flags.map((flag) => (
+            <DigestRow
+              key={flag.id}
+              flag={flag}
+              selected={flag.id === selectedFlagId}
+              onAck={onAck}
+              onSelect={onSelect}
+            />
+          ))
+        )}
+      </div>
+    </section>
   );
 }

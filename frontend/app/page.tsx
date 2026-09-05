@@ -105,6 +105,7 @@ export default function Home() {
       <DigestList
         flags={viewed.data?.flags ?? null}
         error={digestError}
+        selectedFlagId={selectedFlag?.id}
         pendingNewCount={pendingNewCount}
         onPullInNew={() => setViewed(latest)}
         onAck={handleAck}

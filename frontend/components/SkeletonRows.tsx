@@ -1,19 +1,16 @@
-export function SkeletonRows({ count = 4 }: { count?: number }) {
+export function SkeletonRows({ count = 3 }: { count?: number }) {
   return (
-    <ul className="animate-pulse">
+    <div className="animate-pulse">
       {Array.from({ length: count }).map((_, i) => (
-        <li key={i} className="flex flex-col gap-2 border-b border-l-2 border-hairline border-l-transparent px-4 py-3 last:border-b-0">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <div className="h-4 w-20 rounded bg-surface-subtle" />
-              <div className="h-3 w-16 rounded bg-surface-subtle" />
-            </div>
-            <div className="h-3 w-10 rounded bg-surface-subtle" />
+        <div key={i} className="space-y-3 bg-surface-raised px-4 py-5 sm:px-6">
+          <div className="flex gap-6">
+            <div className="h-8 w-20 rounded bg-surface-subtle" />
+            <div className="h-8 flex-1 rounded bg-surface-subtle" />
           </div>
-          <div className="h-3 w-3/4 rounded bg-surface-subtle" />
-          <div className="h-5 w-20 rounded bg-surface-subtle" />
-        </li>
+          <div className="h-4 w-2/3 rounded bg-surface-subtle" />
+          <div className="h-4 w-1/3 rounded bg-surface-subtle" />
+        </div>
       ))}
-    </ul>
+    </div>
   );
 }
