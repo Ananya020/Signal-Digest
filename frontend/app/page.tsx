@@ -95,7 +95,7 @@ export default function Home() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-2xl flex-col gap-5 px-4 py-8 sm:px-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-5 px-4 py-8 sm:px-6">
       <AppHeader
         onAboutClick={() => setAboutOpen(true)}
         onAddStockClick={() => watchlistManagerRef.current?.focusSearch()}
@@ -109,24 +109,30 @@ export default function Home() {
         <div className="rounded-md bg-down-wash px-3 py-2 text-sm text-down-text">{bootstrapError}</div>
       )}
 
-      {watchlistId && (
-        <WatchlistManager
-          ref={watchlistManagerRef}
-          watchlistId={watchlistId}
-          onViewHistory={(ticker, name) => setHistoryTarget({ ticker, name })}
-        />
-      )}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="flex flex-col gap-4">
+          <DigestList
+            flags={viewed.data?.flags ?? null}
+            error={digestError}
+            selectedFlagId={selectedFlag?.id}
+            pendingNewCount={pendingNewCount}
+            tickerInfo={tickerInfo}
+            onPullInNew={() => setViewed(latest)}
+            onAck={handleAck}
+            onSelect={handleSelect}
+          />
+        </div>
 
-      <DigestList
-        flags={viewed.data?.flags ?? null}
-        error={digestError}
-        selectedFlagId={selectedFlag?.id}
-        pendingNewCount={pendingNewCount}
-        tickerInfo={tickerInfo}
-        onPullInNew={() => setViewed(latest)}
-        onAck={handleAck}
-        onSelect={handleSelect}
-      />
+        <div className="flex flex-col gap-4">
+          {watchlistId && (
+            <WatchlistManager
+              ref={watchlistManagerRef}
+              watchlistId={watchlistId}
+              onViewHistory={(ticker, name) => setHistoryTarget({ ticker, name })}
+            />
+          )}
+        </div>
+      </div>
 
       {selectedFlag && (
         <EvidencePanel
