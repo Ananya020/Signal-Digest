@@ -15,7 +15,6 @@ import { useProviderStatus } from "@/hooks/useProviderStatus";
 import { ackFlags, fetchEvidence } from "@/lib/api";
 import { ensureBootstrapWatchlist } from "@/lib/bootstrap";
 import { EMPTY_DIGEST_POLL_STATE, newFlagIds, type DigestPollState } from "@/lib/digestPoll";
-import { directionFromFlag } from "@/lib/severity";
 import type { EvidenceResponse, Flag } from "@/lib/types";
 
 export default function Home() {
@@ -114,11 +113,11 @@ export default function Home() {
 
       {selectedFlag && (
         <EvidencePanel
+          flag={selectedFlag}
           evidence={evidence}
-          severity={selectedFlag.severity}
-          direction={directionFromFlag(selectedFlag)}
           loading={evidenceLoading}
           error={evidenceError}
+          onAck={handleAck}
           onClose={() => setSelectedFlag(null)}
         />
       )}
