@@ -13,6 +13,10 @@ const UNIVERSE = [
 
 const noop = () => {};
 
+function search(query: string) {
+  fireEvent.change(screen.getByPlaceholderText("Add a stock — e.g. TITAN"), { target: { value: query } });
+}
+
 describe("WatchlistManager", () => {
   beforeEach(() => {
     vi.resetAllMocks();
@@ -28,35 +32,39 @@ describe("WatchlistManager", () => {
     render(<WatchlistManager watchlistId="wl-1" onViewHistory={onViewHistory} />);
     await waitFor(() => expect(screen.getByText(/RELIANCE/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByTitle("View history for RELIANCE.NS"));
+    fireEvent.click(screen.getByLabelText("View signal history for RELIANCE.NS"));
     expect(onViewHistory).toHaveBeenCalledWith("RELIANCE.NS", "Reliance Industries");
   });
 
-  it("excludes tickers already in the watchlist from the add options", async () => {
+  it("excludes tickers already in the watchlist from search results", async () => {
     vi.mocked(api.listWatchlistItems).mockResolvedValue([
       { ticker: "RELIANCE.NS", name: "Reliance Industries", sector: "Energy/Materials" },
     ]);
 
     render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
-
     await waitFor(() => expect(screen.getByText(/RELIANCE/)).toBeInTheDocument());
 
-    const select = screen.getByLabelText("Add a ticker to your watchlist");
-    const options = Array.from(select.querySelectorAll("option")).map((o) => o.textContent);
-    expect(options.some((o) => o?.includes("RELIANCE"))).toBe(false);
-    expect(options.some((o) => o?.includes("TCS"))).toBe(true);
-    expect(options.some((o) => o?.includes("INFY"))).toBe(true);
+    // "reliance" matches RELIANCE's own name, yet it must never appear a
+    // second time (in the search results) — it's already in the watchlist,
+    // shown once, in the existing-items list below.
+    search("reliance");
+    expect(screen.getAllByText("RELIANCE")).toHaveLength(1);
+
+    search("t");
+    expect(screen.getByText("TCS")).toBeInTheDocument();
+
+    search("infy");
+    expect(screen.getByText("INFY")).toBeInTheDocument();
   });
 
-  it("selecting a ticker and clicking Add calls the add endpoint", async () => {
+  it("searching for a ticker and clicking Add calls the add endpoint", async () => {
     vi.mocked(api.listWatchlistItems).mockResolvedValue([]);
     vi.mocked(api.addWatchlistItem).mockResolvedValue(undefined);
 
     render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
-    await waitFor(() => expect(screen.getByLabelText("Add a ticker to your watchlist")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText("Add a stock — e.g. TITAN")).toBeInTheDocument());
 
-    const select = screen.getByLabelText("Add a ticker to your watchlist") as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: "TCS.NS" } });
+    search("TCS");
     fireEvent.click(screen.getByText("Add"));
 
     await waitFor(() => expect(api.addWatchlistItem).toHaveBeenCalledWith("wl-1", "TCS.NS"));
@@ -71,7 +79,7 @@ describe("WatchlistManager", () => {
     render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
     await waitFor(() => expect(screen.getByText(/RELIANCE/)).toBeInTheDocument());
 
-    fireEvent.click(screen.getByTitle("Remove RELIANCE.NS"));
+    fireEvent.click(screen.getByLabelText("Remove RELIANCE.NS from watchlist"));
 
     await waitFor(() => expect(api.removeWatchlistItem).toHaveBeenCalledWith("wl-1", "RELIANCE.NS"));
   });
@@ -81,9 +89,9 @@ describe("WatchlistManager", () => {
     vi.mocked(api.addWatchlistItem).mockResolvedValue(undefined);
 
     render(<WatchlistManager watchlistId="wl-1" onViewHistory={noop} />);
-    await waitFor(() => expect(screen.getByLabelText("Add a ticker to your watchlist")).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByPlaceholderText("Add a stock — e.g. TITAN")).toBeInTheDocument());
 
-    fireEvent.change(screen.getByLabelText("Add a ticker to your watchlist"), { target: { value: "TCS.NS" } });
+    search("TCS");
     fireEvent.click(screen.getByText("Add"));
 
     await waitFor(() => expect(api.addWatchlistItem).toHaveBeenCalled());
