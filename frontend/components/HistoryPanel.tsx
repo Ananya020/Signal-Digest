@@ -25,10 +25,14 @@ function formatTradingDay(isoDate: string): string {
 
 /** The ticker's real, queryable flags audit trail — proves the `flags`
  * table is a genuine history, not just "whatever's currently unacked."
- * Deliberately minimal (design.md): edge-to-edge rows, hairline dividers,
- * tabular numerals, no charts/cards/summary stats. Fetches real backend
- * data on open — never derives history from the current digest state, so a
- * ticker with zero active signals can still show past flags here. */
+ * Row structure matches ui_reference.md's HistoryList (date + severity/
+ * signal-type/direction subtitle, sigma badge on the right); the
+ * reference's "Stock-specific/Sector-wide" subtitle segment is dropped —
+ * the real GET /tickers/{ticker}/flags rows don't carry sector_relative,
+ * only the digest's live Flag rows do, and this never fabricates a field
+ * the backend doesn't return. Fetches real backend data on open — never
+ * derives history from the current digest state, so a ticker with zero
+ * active signals can still show past flags here. */
 export function HistoryPanel({
   ticker,
   name,
@@ -81,37 +85,35 @@ export function HistoryPanel({
       {!error && flags === null && <p className="py-8 text-center text-sm text-ink-muted">Loading…</p>}
 
       {!error && flags !== null && flags.length === 0 && (
-        <p className="py-8 text-center text-sm text-ink-muted">
-          Nothing unusual has been recorded for this ticker.
-        </p>
+        <p className="py-4 text-sm text-ink-muted">No earlier signals recorded for {bareTicker}.</p>
       )}
 
       {!error && flags !== null && flags.length > 0 && (
-        <ul className="max-h-[60vh] overflow-y-auto">
+        <ul className="max-h-[60vh] divide-y divide-hairline overflow-y-auto">
           {flags.map((flag, i) => {
-            const meta = SEVERITY_META[flag.severity];
             const direction = flag.z_score != null ? directionFromFlag(flag) : null;
             return (
               <li
                 key={`${flag.trading_day}-${flag.signal_type}-${i}`}
-                className="flex items-center justify-between gap-3 border-b border-hairline py-2.5 last:border-0"
+                className="flex items-center justify-between gap-4 py-3"
               >
-                <span className="tnum text-xs text-ink-muted">{formatTradingDay(flag.trading_day)}</span>
-                <div className="flex flex-col items-end gap-0.5">
-                  <span className="flex items-center gap-1.5 text-xs font-medium text-ink">
-                    <span aria-hidden="true">{meta.icon}</span>
-                    {meta.label.toUpperCase()}
-                    {flag.z_score != null && (
-                      <span
-                        className={`tnum ${direction === "up" ? "text-up-text" : "text-down-text"}`}
-                      >
-                        {flag.z_score > 0 ? "+" : ""}
-                        {flag.z_score.toFixed(2)}σ
-                      </span>
-                    )}
-                  </span>
-                  <span className="label-caps text-ink-muted">{SIGNAL_LABEL[flag.signal_type]}</span>
+                <div className="min-w-0">
+                  <p className="num text-sm font-medium text-ink">{formatTradingDay(flag.trading_day)}</p>
+                  <p className="text-xs text-ink-muted">
+                    {SEVERITY_META[flag.severity].label} · {SIGNAL_LABEL[flag.signal_type]}
+                    {direction && <> · {direction === "up" ? "Upside" : "Downside"}</>}
+                  </p>
                 </div>
+                {flag.z_score != null && (
+                  <span
+                    className={`num font-display text-sm font-semibold ${
+                      direction === "up" ? "text-up-strong" : "text-down-strong"
+                    }`}
+                  >
+                    {flag.z_score > 0 ? "+" : ""}
+                    {flag.z_score.toFixed(2)}σ
+                  </span>
+                )}
               </li>
             );
           })}

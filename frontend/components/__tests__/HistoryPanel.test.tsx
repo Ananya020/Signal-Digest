@@ -18,10 +18,10 @@ describe("HistoryPanel", () => {
 
     render(<HistoryPanel ticker="INFY.NS" name="Infosys" onClose={() => {}} />);
 
-    await waitFor(() => expect(screen.getByText("EXTREME")).toBeInTheDocument());
-    expect(screen.getByText("NOTABLE")).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText(/Extreme/)).toBeInTheDocument());
+    expect(screen.getByText(/Notable/)).toBeInTheDocument();
     expect(screen.getByText(/-4.12σ/)).toBeInTheDocument();
-    expect(screen.getAllByText("Price anomaly")).toHaveLength(2);
+    expect(screen.getAllByText(/Price anomaly/)).toHaveLength(2);
     expect(screen.getByText(/INFY/)).toBeInTheDocument();
     expect(screen.getByText(/Infosys/)).toBeInTheDocument();
     expect(api.fetchTickerFlags).toHaveBeenCalledWith("INFY.NS");
@@ -33,7 +33,7 @@ describe("HistoryPanel", () => {
     render(<HistoryPanel ticker="TCS.NS" onClose={() => {}} />);
 
     await waitFor(() =>
-      expect(screen.getByText("Nothing unusual has been recorded for this ticker.")).toBeInTheDocument()
+      expect(screen.getByText(/No earlier signals recorded for TCS/)).toBeInTheDocument()
     );
   });
 
