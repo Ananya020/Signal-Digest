@@ -1,51 +1,58 @@
 @import "tailwindcss";
 
-/* Signal Digest — "Precision Intelligence" design system (design.md).
-   Single committed light theme — this is an intentional replacement of
-   the prior dark-first token set, not a parallel option. */
+/* Signal Digest — "Precision Intelligence" design system (design.md),
+   tokens reconciled against ui_reference.md's OKLCH palette (UI Reference
+   Adoption, Step 1). Same token names/structure as before (every consuming
+   component keeps working unchanged); values now come from the reference's
+   perceptually-uniform OKLCH scale instead of ad hoc hex/rgba. Single
+   committed light theme — this is an intentional replacement of the prior
+   dark-first token set, not a parallel option, so the reference's `.dark`
+   block is deliberately not ported. */
 :root {
   /* Canvas & neutral architecture */
-  --canvas: #faf9f6;
-  --surface-subtle: #f1f3f5;
-  --surface-hover: #f8f9fa;
-  --surface-raised: #ffffff;
-  --hairline: rgba(15, 23, 42, 0.06);
-  --border: rgba(15, 23, 42, 0.1);
-  --border-strong: rgba(15, 23, 42, 0.09);
-  --ink: #0f172a;
-  --ink-muted: #64748b;
+  --canvas: oklch(0.985 0.003 250);
+  --surface-subtle: oklch(0.968 0.004 250);
+  --surface-hover: oklch(0.975 0.004 250);
+  --surface-raised: oklch(1 0 0);
+  --hairline: oklch(0.925 0.006 254 / 55%);
+  --border: oklch(0.925 0.006 254);
+  --border-strong: oklch(0.87 0.008 254);
+  --ink: oklch(0.21 0.024 258);
+  --ink-muted: oklch(0.53 0.018 258);
 
   /* Functional accents */
-  --cobalt: #4338ca;
-  --cobalt-hover: #3730a3;
-  --cobalt-wash: rgba(67, 56, 202, 0.08);
+  --cobalt: oklch(0.52 0.115 163);
+  --cobalt-hover: oklch(0.46 0.115 163);
+  --cobalt-wash: oklch(0.962 0.014 165);
 
   /* Direction hue families — severity is intensity WITHIN these, never a
      hue change. "wash" = Notable, "soft" = Significant, "strong" = Extreme. */
-  --up-wash: rgba(5, 150, 105, 0.08);
-  --up-soft: #d1fae5;
-  --up-strong: #059669;
-  --up-text: #047857;
+  --up-wash: oklch(0.975 0.015 160);
+  --up-soft: oklch(0.955 0.03 160);
+  --up-strong: oklch(0.52 0.13 158);
+  --up-text: oklch(0.42 0.13 158);
 
-  --down-wash: rgba(225, 29, 72, 0.08);
-  --down-soft: #ffe4e6;
-  --down-strong: #e11d48;
-  --down-text: #be123c;
+  --down-wash: oklch(0.978 0.012 25);
+  --down-soft: oklch(0.962 0.024 25);
+  --down-strong: oklch(0.53 0.185 22);
+  --down-text: oklch(0.44 0.185 22);
 
   /* Freshness (system health, not price direction — a separate channel).
      Five genuinely graduated steps (not just five labels sharing three
      colors) so every state is distinguishable at a glance: strong-green →
-     soft-green → soft-amber → strong-amber → red. */
-  --fresh-live: #059669;
-  --fresh-live-wash: rgba(5, 150, 105, 0.1);
-  --fresh-recent: #34a37e;
-  --fresh-recent-wash: rgba(5, 150, 105, 0.06);
-  --fresh-delayed: #b0790f;
-  --fresh-delayed-wash: rgba(217, 119, 6, 0.06);
-  --fresh-stale: #d97706;
-  --fresh-stale-wash: rgba(217, 119, 6, 0.12);
-  --fresh-unavailable: #e11d48;
-  --fresh-unavailable-wash: rgba(225, 29, 72, 0.1);
+     soft-green → soft-amber → strong-amber → red. The reference only names
+     three freshness hues (live/delayed/stale); recent/unavailable are
+     interpolated/reused to preserve this project's five-state distinction. */
+  --fresh-live: oklch(0.6 0.15 155);
+  --fresh-live-wash: oklch(0.94 0.04 155);
+  --fresh-recent: oklch(0.62 0.11 150);
+  --fresh-recent-wash: oklch(0.95 0.025 150);
+  --fresh-delayed: oklch(0.68 0.14 75);
+  --fresh-delayed-wash: oklch(0.95 0.035 75);
+  --fresh-stale: oklch(0.56 0.17 30);
+  --fresh-stale-wash: oklch(0.955 0.03 30);
+  --fresh-unavailable: oklch(0.55 0.19 25);
+  --fresh-unavailable-wash: oklch(0.958 0.03 25);
 }
 
 @theme inline {
@@ -84,9 +91,9 @@
   --color-fresh-unavailable: var(--fresh-unavailable);
   --color-fresh-unavailable-wash: var(--fresh-unavailable-wash);
 
-  --font-sans: var(--font-geist);
+  --font-sans: var(--font-ibm-plex-sans);
   --font-display: var(--font-plus-jakarta);
-  --font-mono: var(--font-geist-mono);
+  --font-mono: var(--font-ibm-plex-mono);
 }
 
 body {
@@ -95,8 +102,12 @@ body {
 }
 
 /* design.md's Tabular Numerics principle: enforced on any currency/delta/
-   percentage/timeline figure so live updates never reflow layout. */
-.tnum {
+   percentage/timeline figure so live updates never reflow layout.
+   `.num` is ui_reference.md's own name for the same utility — added here
+   so later per-component steps can adopt it directly; `.tnum` stays until
+   every current call site has been ported in its own step (Step 4+). */
+.tnum,
+.num {
   font-feature-settings:
     "tnum" on,
     "cv02" on,
@@ -105,13 +116,25 @@ body {
 }
 
 /* Precision Metadata micro-labels — design.md's own deliberate uppercase
-   treatment for structural labels at 11px, not a generic template tell. */
+   treatment for structural labels at 11px, not a generic template tell.
+   `.eyebrow` is ui_reference.md's equivalent utility (its own font-display
+   family + slightly larger scale); kept alongside `.label-caps` until
+   components migrate to it in their own step. */
 .label-caps {
   font-size: 11px;
   font-weight: 600;
   line-height: 14px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+.eyebrow {
+  font-family: var(--font-display);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
 }
 
 /* design.md's body-lg (16px/26px/-0.01em) — the ticker's deliberate size,
