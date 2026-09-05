@@ -6,7 +6,7 @@ from app.auth import get_current_user
 from app.db import get_pool
 from app.schemas import AckRequest, WatchlistCreate, WatchlistItemCreate
 from app.services.brief import build_brief
-from app.services.digest import compute_digest, load_since_last_ack
+from app.services.digest import compute_digest, compute_events, load_since_last_ack
 from app.services.watchlist_access import get_owned_watchlist
 
 router = APIRouter(prefix="/watchlists", tags=["watchlists"])
@@ -176,6 +176,11 @@ async def get_digest(
         # there are zero active signals; the frontend's existing calm
         # empty-state copy handles that case, not this field.
         "brief": build_brief(rows),
+        # Step B: a supplementary read-time grouping view over the exact
+        # same `rows` above — flags remain in the flat list unchanged, this
+        # is purely additive. See compute_events() for the 2+-member
+        # blast-radius rule.
+        "events": compute_events(rows),
     }
 
 

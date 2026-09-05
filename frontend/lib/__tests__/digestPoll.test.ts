@@ -20,7 +20,7 @@ function makeFlag(id: number): Flag {
 }
 
 function digest(flags: Flag[]): DigestResponse {
-  return { freshness: "LIVE", detail: "mode=normal", flags, brief: null };
+  return { freshness: "LIVE", detail: "mode=normal", flags, brief: null, events: [] };
 }
 
 describe("applyDigestPollResult", () => {

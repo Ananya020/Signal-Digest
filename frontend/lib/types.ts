@@ -21,6 +21,17 @@ export interface Flag {
   since_last_ack: { severity_rank_at_ack: 1 | 2 | 3 | null; z_score_at_ack: number | null; acked_at: string } | null;
 }
 
+/** Step B: a read-time grouping of currently-surfaced sector-wide flags by
+ * sector — purely a supplementary view over `flags` (recomputed fresh every
+ * digest call, no persistence). Only sectors with 2+ members appear here;
+ * a single-member sector or a stock-specific flag renders as an ordinary
+ * row and never appears in `events`. */
+export interface DigestEvent {
+  sector: string;
+  tickers: string[];
+  strongest_z_score: number;
+}
+
 export interface DigestResponse {
   freshness: Freshness;
   detail: string;
@@ -29,6 +40,7 @@ export interface DigestResponse {
    * server-side. `null` when there are zero active signals; render the
    * existing calm empty-state copy in that case, not this field. */
   brief: string | null;
+  events: DigestEvent[];
 }
 
 export interface ProviderStatus {

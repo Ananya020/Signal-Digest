@@ -9,6 +9,7 @@ async def insert_flag(
     severity: str = "notable",
     signal_type: str = "price_zscore",
     z_score: float = 2.1,
+    sector_relative: str | None = None,
 ) -> int:
     """Directly inserts a flag row for API-level test setup. Phase 2's
     scoring pipeline is tested separately (test_scoring.py, test_flags_ack_bust.py);
@@ -24,6 +25,6 @@ async def insert_flag(
         RETURNING id
         """,
         ticker, trading_day, signal_type, z_score, severity, severity_rank,
-        1.5, None, datetime.now(timezone.utc), "replay_simulated",
+        1.5, sector_relative, datetime.now(timezone.utc), "replay_simulated",
     )
     return row["id"]

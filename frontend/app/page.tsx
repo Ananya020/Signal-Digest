@@ -113,6 +113,7 @@ export default function Home() {
         <div className="flex flex-col gap-4">
           <DigestList
             flags={viewed.data?.flags ?? null}
+            events={viewed.data?.events}
             error={digestError}
             selectedFlagId={selectedFlag?.id}
             pendingNewCount={pendingNewCount}

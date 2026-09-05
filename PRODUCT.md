@@ -5,6 +5,8 @@
 
 Secondary signal, not a dependency: sector-relative context (bucket the fixed stock universe into 4-6 hand-curated sectors, compare a flagged stock's move to its sector's own mean move for the day). Must degrade gracefully to "no sector context" — never blocks the core flag.
 
+**Event Grouping (2026-09-06):** a pure read-time UI aggregation built on top of `sector_relative`, not a new signal. When 2+ of the digest's currently-surfaced flags share `sector_relative = 'sector_wide'` and the same sector, `GET /digest` additionally groups them into an `events` entry so the UI can show "N stocks moving together in {sector}" as one expandable card instead of N separate rows. No new scoring, no persistence, no change to individual flags or the ack model — a single-member sector or any stock-specific flag renders exactly as before. See DATA_MODEL.md for the query-level detail.
+
 ## Why this exists vs. Groww's real watchlist
 Groww's existing watchlist answers "what's the price now." This answers "does this deserve your attention, and why" — by comparing every move to that instrument's own normal behavior instead of a one-size-fits-all threshold.
 

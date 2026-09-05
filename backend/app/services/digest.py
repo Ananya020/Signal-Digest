@@ -119,6 +119,37 @@ async def load_since_last_ack(pool: asyncpg.Pool, watchlist_id, flag_ids: list[i
     return result
 
 
+# Step B ("Event Grouping", 2026-09-06): a pure, read-time aggregation over
+# the rows _UNACKED_FLAGS_SQL already surfaces (post-Step-A: at most one
+# unacked flag per ticker) — no new table, no persistence, no new
+# invalidation logic, recomputed fresh on every digest call. Only
+# sector_relative == 'sector_wide' flags are eligible; stock-specific flags
+# are never grouped. A sector with fewer than 2 members is not an "event" —
+# it renders as an ordinary row, unchanged, so the common case stays
+# visually identical to before this feature existed.
+def compute_events(rows: list[asyncpg.Record]) -> list[dict]:
+    """Pure function over already-fetched digest rows — does not query the
+    DB itself, so it can't diverge from what the caller actually surfaced."""
+    by_sector: dict[str, list[asyncpg.Record]] = {}
+    for row in rows:
+        if row["sector_relative"] != "sector_wide":
+            continue
+        by_sector.setdefault(row["sector"], []).append(row)
+
+    events = []
+    for sector, members in by_sector.items():
+        if len(members) < 2:
+            continue
+        events.append({
+            "sector": sector,
+            "tickers": sorted(m["ticker"] for m in members),
+            "strongest_z_score": float(max(abs(m["z_score"]) for m in members if m["z_score"] is not None)),
+        })
+    # Deterministic ordering — strongest cluster first, ties broken by sector name.
+    events.sort(key=lambda e: (-e["strongest_z_score"], e["sector"]))
+    return events
+
+
 def compute_aggregate_hash(pairs: list[tuple[int, int]]) -> str:
     """`pairs` need not be pre-sorted or deduplicated by the caller — sorting
     happens here so the hash is reproducible regardless of DB/query

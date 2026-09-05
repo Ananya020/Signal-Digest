@@ -152,6 +152,61 @@ async def test_since_last_ack_is_null_for_a_flag_with_no_ack_history(client, db_
     assert flags[0]["since_last_ack"] is None
 
 
+async def test_digest_events_groups_2plus_sector_wide_flags_by_sector(
+    client, db_pool, demo_watchlist, test_ticker, test_ticker_2
+):
+    """test_ticker/test_ticker_2 both seed into sector 'Test' (conftest.py) —
+    real DB join, not a mocked sector lookup."""
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker_2})
+
+    id_a = await insert_flag(db_pool, test_ticker, date(2026, 3, 1), z_score=2.4, sector_relative="sector_wide")
+    id_b = await insert_flag(db_pool, test_ticker_2, date(2026, 3, 1), z_score=-3.9, sector_relative="sector_wide")
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    body = resp.json()
+
+    # Flags remain in the existing flat list, unchanged.
+    assert {f["id"] for f in body["flags"]} == {id_a, id_b}
+
+    assert body["events"] == [{"sector": "Test", "tickers": [test_ticker, test_ticker_2], "strongest_z_score": 3.9}]
+
+
+async def test_digest_events_excludes_single_member_sectors_and_stock_specific_flags(
+    client, db_pool, demo_watchlist, test_ticker
+):
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    await insert_flag(db_pool, test_ticker, date(2026, 3, 1), z_score=2.4, sector_relative="sector_wide")
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    body = resp.json()
+
+    assert body["events"] == []
+    assert len(body["flags"]) == 1  # renders as an ordinary row, unchanged
+
+
+async def test_acking_one_event_member_only_affects_that_flag(
+    client, db_pool, demo_watchlist, test_ticker, test_ticker_2
+):
+    """Ack semantics are untouched by Step B — no bulk-ack-by-event, acking
+    one member never affects its siblings or the ETag correctness for the
+    watchlist as a whole (reuses the existing real /ack endpoint)."""
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
+    await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker_2})
+
+    id_a = await insert_flag(db_pool, test_ticker, date(2026, 3, 1), z_score=2.4, sector_relative="sector_wide")
+    id_b = await insert_flag(db_pool, test_ticker_2, date(2026, 3, 1), z_score=-3.9, sector_relative="sector_wide")
+
+    await client.post(f"/watchlists/{demo_watchlist}/ack", json={"flag_ids": [id_a]})
+
+    resp = await client.get(f"/watchlists/{demo_watchlist}/digest")
+    body = resp.json()
+
+    assert [f["id"] for f in body["flags"]] == [id_b]
+    # Only one member left unacked — no longer a 2+-member cluster.
+    assert body["events"] == []
+
+
 async def test_digest_etag_full_sequence(client, db_pool, demo_watchlist, test_ticker):
     add_resp = await client.post(f"/watchlists/{demo_watchlist}/items", json={"ticker": test_ticker})
     assert add_resp.status_code == 200

@@ -64,10 +64,25 @@ watchlist_ack_state (
 )
 
 flag_ack (
-  flag_id      BIGINT REFERENCES flags(id),
-  watchlist_id UUID REFERENCES watchlists(id),
-  acked_at     TIMESTAMPTZ NOT NULL,
+  flag_id               BIGINT REFERENCES flags(id),
+  watchlist_id          UUID REFERENCES watchlists(id),
+  acked_at              TIMESTAMPTZ NOT NULL,
+  severity_rank_at_ack  SMALLINT,               -- Step A (2026-09-06), see below
+  z_score_at_ack        NUMERIC(6,3),           -- Step A (2026-09-06), see below
   PRIMARY KEY (flag_id, watchlist_id)
+)
+
+-- Step A (2026-09-06), migrations/002_since_last_checked.sql — audit-only,
+-- never read by ack-bust logic (flags.py), never affects it. See the
+-- "since you last checked" section below.
+flag_ack_history (
+  id                    BIGSERIAL PRIMARY KEY,
+  flag_id               BIGINT REFERENCES flags(id),
+  watchlist_id          UUID REFERENCES watchlists(id),
+  severity_rank_at_ack  SMALLINT,
+  z_score_at_ack        NUMERIC(6,3),
+  acked_at              TIMESTAMPTZ NOT NULL,
+  superseded_at         TIMESTAMPTZ NOT NULL
 )
 
 provider_state (
@@ -126,3 +141,15 @@ WHERE wi.watchlist_id = :wid AND fa.flag_id IS NULL
 ORDER BY f.z_score DESC;
 ```
 At real scale, short-circuit first: compare `watchlist_ack_state.last_seen_hash` against a freshly computed aggregate hash — if equal, skip this join entirely (the 304-equivalent).
+
+## "Since you last checked" (Step A, 2026-09-06) — implementation, locked
+
+`flag_ack` snapshots `severity_rank`/`z_score` at the moment of ack (`POST /ack`). When escalation later busts that ack, `flags.py::upsert_flag_with_ack_bust` copies the live `flag_ack` row into `flag_ack_history` (`superseded_at = now()`) **immediately before** the existing `DELETE FROM flag_ack` — same transaction, delete's condition/timing/boundary unchanged. De-escalation and equal-rank reruns write nothing here (nothing was superseded).
+
+`GET /digest`'s `since_last_ack` per flag: the live `flag_ack` row if currently acked, else the most recent `flag_ack_history` row if previously acked and since busted, else `null` (never fabricated) — see `app/services/digest.py::load_since_last_ack`. Read-only, computed after the digest query; cannot influence scoring, ranking, or the ETag hash.
+
+**Known integrity gap, not yet closed:** `flag_ack_history.flag_id`/`watchlist_id` have no `ON DELETE CASCADE`, and today's app never deletes a `flags` or `watchlists` row (the only delete endpoint, `DELETE /watchlists/{id}/items/{ticker}`, only touches `watchlist_items`), so no orphan currently exists. A future watchlist-delete or flag-purge feature must explicitly clear `flag_ack_history` first (same pattern `flag_ack` cleanup already needs) or it will leave orphaned rows in what is meant to be a trustworthy audit trail.
+
+## Event Grouping (Step B, 2026-09-06) — no schema change, read-time only
+
+`compute_events()` (`app/services/digest.py`) is a pure function over the exact rows `_UNACKED_FLAGS_SQL` already returns for a `GET /digest` call — no new table, no persistence, no new invalidation logic, recomputed fresh on every request from data already fetched. It groups `sector_relative = 'sector_wide'` rows by `sector`, keeping only clusters with 2+ members (a lone sector-wide flag is not an "event" — it renders as an ordinary row). `sector_relative = 'stock_specific'` rows are never grouped. Output: `events: [{sector, tickers, strongest_z_score}]`, sorted strongest-first. Ack semantics are completely untouched — each member is still acked individually through the existing `POST /ack`, keyed by its own `flag_id` exactly as before; there is no bulk-ack-by-event anywhere in the model.
