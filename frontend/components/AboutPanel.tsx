@@ -19,7 +19,7 @@ export function AboutPanel({ onClose }: { onClose: () => void }) {
         </button>
       </div>
 
-      <div className="flex flex-col gap-3 text-sm leading-relaxed text-ink-muted">
+      <div className="flex flex-col gap-4 text-sm leading-relaxed text-ink-muted">
         <p>
           Signal Digest flags price and volume moves that are statistically unusual for a specific
           instrument&apos;s own recent behavior — not a flat percentage threshold. Every flag ships with the
@@ -31,19 +31,40 @@ export function AboutPanel({ onClose }: { onClose: () => void }) {
           different for a stable large-cap than a volatile mid-cap — this compares each move to that
           instrument&apos;s own normal behavior instead of a one-size-fits-all number.
         </p>
-        <p>
-          Scoring is fully deterministic: a z-score crossing is the sole trigger, with volume and sector
-          context kept as annotations, never blended into one composite score. No ML or LLM sits in the
-          decision path — a defensible number plus plain English beats justifying arbitrary model weights.
-        </p>
-        <p>
-          The product&apos;s core mechanic is &quot;what changed since you last checked,&quot; not just what&apos;s
-          true right now — modeled on two real Groww engineering posts: <em>Improving the Efficiency of
-          Rendering User Holdings</em> (the ETag/304 short-circuit this digest&apos;s polling is built on) and{" "}
-          <em>Holding Revamp Went Live. Then Reality Check Hit Hard</em> (the cache-invalidation postmortem
-          this project&apos;s same-transaction ack-bust rule was built to avoid).
-        </p>
-        <p className="border-t border-hairline pt-3 text-xs text-ink-muted">
+
+        <div>
+          <h3 className="eyebrow">Deterministic scoring</h3>
+          <p className="mt-1.5">
+            Scoring is fully deterministic: a z-score crossing is the sole trigger, with volume and sector
+            context kept as annotations, never blended into one composite score. No ML or LLM sits in the
+            decision path — a defensible number plus plain English beats justifying arbitrary model weights.
+          </p>
+        </div>
+
+        <div>
+          <h3 className="eyebrow">Severity bands</h3>
+          <ul className="num mt-1.5 space-y-1">
+            <li>Notable — |z| in [2.0, 2.5)</li>
+            <li>Significant — |z| in [2.5, 3.5)</li>
+            <li>Extreme — |z| ≥ 3.5</li>
+          </ul>
+        </div>
+
+        <div>
+          <h3 className="eyebrow">Since you last checked</h3>
+          <p className="mt-1.5">
+            The product&apos;s core mechanic is &quot;what changed since you last checked,&quot; not just
+            what&apos;s true right now — modeled on two real Groww engineering posts:{" "}
+            <em>Improving the Efficiency of Rendering User Holdings</em> (the ETag/304 short-circuit this
+            digest&apos;s polling is built on) and <em>Holding Revamp Went Live. Then Reality Check Hit
+            Hard</em> (the cache-invalidation postmortem this project&apos;s same-transaction ack-bust rule
+            was built to avoid).
+          </p>
+        </div>
+
+        <hr className="border-hairline" />
+
+        <p className="text-xs text-ink-muted">
           This build replays real historical price data on a clock, not a live market feed, and does not
           provide investment advice.
         </p>
