@@ -6,7 +6,7 @@ join level, ownership, and evidence.
 
 from datetime import date, datetime, timedelta, timezone
 
-from app.data.baselines import compute_and_store_baseline, load_latest_baseline
+from app.data.baselines import compute_baseline_as_of, load_price_series, upsert_baseline
 from app.services.scoring import compute_return
 from tests.helpers import insert_flag
 
@@ -221,10 +221,12 @@ async def test_evidence_from_real_price_ticks_and_persisted_flag(client, db_pool
     base_ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
     prices = [100.0 + i for i in range(35)]
     await _seed_price_series(db_pool, test_ticker, base_ts, prices)
-    await compute_and_store_baseline(db_pool, test_ticker)
-    baseline = await load_latest_baseline(db_pool, test_ticker)
 
     trading_day = (base_ts + timedelta(days=34)).date()
+    series = await load_price_series(db_pool, test_ticker)
+    baseline = compute_baseline_as_of(test_ticker, series, trading_day)
+    await upsert_baseline(db_pool, baseline)
+
     flagged_return = compute_return(prices[33], prices[34])
     z = (flagged_return - baseline.mean_return_30d) / baseline.stdev_return_30d
     flag_id = await insert_flag(db_pool, test_ticker, trading_day, severity_rank=2, z_score=z)
@@ -239,9 +241,11 @@ async def test_evidence_from_real_price_ticks_and_persisted_flag(client, db_pool
     # All returns in this monotonically-increasing-by-$1 series are positive.
     assert all(p["return"] > 0 for p in body["points"])
     # mean_return/stdev_return come from the SAME baseline row the flag's
-    # z_score was computed from — not independently recomputed.
-    assert body["mean_return"] == baseline.mean_return_30d
-    assert body["stdev_return"] == baseline.stdev_return_30d
+    # z_score was computed from — not independently recomputed. Compared
+    # with tolerance: the baselines table stores these as NUMERIC, which
+    # rounds on write, so an exact float equality isn't guaranteed.
+    assert abs(body["mean_return"] - baseline.mean_return_30d) < 1e-5
+    assert abs(body["stdev_return"] - baseline.stdev_return_30d) < 1e-5
 
 
 async def test_flagged_point_zscore_is_reproducible_from_response(client, db_pool, test_ticker):
@@ -252,13 +256,17 @@ async def test_flagged_point_zscore_is_reproducible_from_response(client, db_poo
     base_ts = datetime(2026, 1, 1, tzinfo=timezone.utc)
     prices = [100.0 + i + (i % 3) * 0.7 for i in range(40)]  # non-trivial, still real, series
     await _seed_price_series(db_pool, test_ticker, base_ts, prices)
-    await compute_and_store_baseline(db_pool, test_ticker)
-    baseline = await load_latest_baseline(db_pool, test_ticker)
 
-    # Flag an EARLIER day than the baseline's own window (day index 10),
-    # mirroring the real static-baseline situation from the replay run —
-    # the flagged day need not fall inside the plotted points window.
+    # Flag an early day (index 10) — the rolling, look-ahead-safe baseline
+    # for that day only has 9 prior returns to draw from (below the 30-day
+    # cap, and below MIN_SAMPLE_SIZE — but evidence doesn't gate on that,
+    # scoring already would have; this test only exercises the evidence
+    # consistency invariant against whatever baseline row exists for that day).
     trading_day = (base_ts + timedelta(days=10)).date()
+    series = await load_price_series(db_pool, test_ticker)
+    baseline = compute_baseline_as_of(test_ticker, series, trading_day)
+    await upsert_baseline(db_pool, baseline)
+
     flagged_return = compute_return(prices[9], prices[10])
     z = (flagged_return - baseline.mean_return_30d) / baseline.stdev_return_30d
     flag_id = await insert_flag(db_pool, test_ticker, trading_day, severity_rank=1, z_score=z)

@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 
 import asyncpg
 
-from app.data.baselines import load_latest_baseline
+from app.data.baselines import compute_baseline_as_of, load_price_series, upsert_baseline
 from app.data.tickers import TICKER_SECTORS, to_nse_symbol
 from app.services.flags import upsert_flag_with_ack_bust
 from app.services.scoring import (
@@ -63,11 +63,19 @@ async def run_scoring_cycle(pool: asyncpg.Pool, provider, tickers: list[str], se
         for tick in ticks:
             if tick.ticker not in today_returns:
                 continue
-            baseline = await load_latest_baseline(pool, tick.ticker)
-            if baseline is None:
-                continue
 
             trading_day = trading_day_from_tick(tick)
+
+            # Rolling baseline, recomputed fresh this cycle from only the
+            # days strictly before trading_day — look-ahead-safe (Workstream
+            # 1, see PROGRESS.md). Persisted as a new (ticker, as_of_date)
+            # row, never overwriting an earlier day's row.
+            series = await load_price_series(pool, tick.ticker)
+            baseline = compute_baseline_as_of(tick.ticker, series, trading_day)
+            if baseline is None:
+                continue
+            await upsert_baseline(pool, baseline)
+
             sector = sector_by_ticker.get(tick.ticker)
             peer_returns = [
                 r for t, r in today_returns.items()

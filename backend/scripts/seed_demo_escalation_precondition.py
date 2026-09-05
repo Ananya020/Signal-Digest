@@ -53,7 +53,7 @@ from datetime import date, datetime, timezone
 import asyncpg
 
 from app.config import settings
-from app.data.baselines import load_latest_baseline
+from app.data.baselines import compute_baseline_as_of
 from app.data.tickers import to_nse_symbol
 from app.providers.historical_replay import load_history
 from app.services.scoring import compute_return, severity_band, z_score
@@ -68,15 +68,19 @@ async def verify_and_seed(
     watchlist_id: str,
     placeholder_rank: int,
 ) -> None:
-    baseline = await load_latest_baseline(pool, ticker)
-    if baseline is None:
-        raise SystemExit(f"No baseline for {ticker} — cannot verify the real severity ahead of time.")
-
     history = await load_history(pool, [ticker])
     series = history[ticker]
     idx = next((i for i, p in enumerate(series) if p.ts.date() == trading_day), None)
     if idx is None or idx == 0:
         raise SystemExit(f"{ticker} has no real_historical price for {trading_day} (or no prior close).")
+
+    # Same look-ahead-safe rolling baseline the live pipeline will compute
+    # for this exact trading_day (Workstream 1) — not a static/latest row —
+    # so this pre-verification matches what run_scoring_cycle will actually
+    # produce once replay reaches trading_day.
+    baseline = compute_baseline_as_of(ticker, series, trading_day)
+    if baseline is None:
+        raise SystemExit(f"No look-ahead-safe baseline available for {ticker} as of {trading_day}.")
 
     real_return = compute_return(series[idx - 1].price, series[idx].price)
     real_z = z_score(real_return, baseline.mean_return_30d, baseline.stdev_return_30d)

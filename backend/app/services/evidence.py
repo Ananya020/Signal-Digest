@@ -1,38 +1,41 @@
 """'Show your work' evidence — real `price_ticks` only, never fabricated.
 
-## Correction (superseding the original Phase 3 design)
+## Correction (Phase 3, superseding the original design)
 
 The original implementation reconstructed a 30-return window ending at the
 flag's own `trading_day` and recomputed mean/stdev from *that* window
-independently of the baseline actually used at scoring time. Because Phase
-2's baseline is static (one row per ticker, as of the last date in its ~1y
-history — see `app/data/baselines.py::load_latest_baseline`), that window
-usually did not match the window the stored `z_score` was actually computed
-from. The result: the displayed band (mean ± stdev) and the displayed
-z_score could be mutually inconsistent — exactly the failure this screen
-exists to prevent (PRODUCT.md: "auditable statistics, not black box").
+independently of the baseline actually used at scoring time — inconsistent
+with the baseline that produced the stored `z_score`. Fixed by reading
+mean/stdev directly from the same baseline row the scoring engine used.
 
-**Corrected design**: `mean_return` and `stdev_return` are read directly
-from the *same* baseline row (`load_latest_baseline`) that produced the
-flag's stored `z_score` — never recomputed independently. The plotted
-`points` window is the exact 30-return window that baseline was itself
-computed from (the last 30 returns of the ticker's full real_historical
-series — see `app/data/baselines.py`'s windowing convention), so the band
-drawn always matches the points plotted under it. The flagged day's own
-return is fetched separately (it may fall outside the baseline's window,
-since the baseline is static and the flag's trading_day may be much
-earlier) and is exactly the return the scoring engine computed at flag time
-— so `flagged_point.z_score` (the flag's stored value) is now algebraically
-reproducible as `(flagged_point.return - mean_return) / stdev_return`,
-within floating-point tolerance. Tested explicitly
+## Correction (Workstream 1 — rolling baselines, see PROGRESS.md)
+
+Baselines are no longer one static row per ticker; there's now a row per
+(ticker, as_of_date), look-ahead-safe (`app/data/baselines.py::
+compute_baseline_as_of`). Evidence must therefore fetch the baseline row for
+the flag's *own* `trading_day` specifically (`load_baseline_as_of`), not
+merely "whatever's most recently computed" (`load_latest_baseline`, which
+would now return a different, later ticker's baseline than the one that
+actually produced this flag's z_score). Likewise, the plotted `points`
+window is reconstructed using the same look-ahead-safe cutoff (only prices
+strictly before `trading_day`), so the band drawn still matches both the
+points plotted under it and the baseline row used to score the flag.
+
+The flagged day's own return is fetched separately (its date is excluded
+from its own baseline's window by construction) and is exactly the return
+the scoring engine computed at flag time — so `flagged_point.z_score` (the
+flag's stored value) remains algebraically reproducible as
+`(flagged_point.return - mean_return) / stdev_return`, within
+floating-point tolerance. Tested explicitly
 (`test_flagged_point_zscore_is_reproducible_from_response`).
 """
 
 from dataclasses import dataclass
+from datetime import date
 
 import asyncpg
 
-from app.data.baselines import load_latest_baseline, load_price_series
+from app.data.baselines import load_baseline_as_of, load_price_series
 from app.services.scoring import compute_return
 
 WINDOW_SIZE = 30
@@ -49,14 +52,15 @@ class EvidencePoint:
     price: float
 
 
-def _baseline_window_points(series) -> list[dict]:
-    """The exact last-30-returns window `load_latest_baseline`'s stats were
-    computed from (see app/data/baselines.py's inclusion convention: the
-    most recent day's own return is the last element of its own window)."""
-    if len(series) < 2:
+def _baseline_window_points(series, as_of_date: date) -> list[dict]:
+    """The exact last-30-returns window `compute_baseline_as_of(as_of_date)`
+    computed its stats from: only points strictly before `as_of_date`,
+    look-ahead-safe, matching the rolling baseline's own windowing."""
+    prior_series = [p for p in series if p.ts.date() < as_of_date]
+    if len(prior_series) < 2:
         return []
-    start = max(0, len(series) - (WINDOW_SIZE + 1))
-    window = series[start:]
+    start = max(0, len(prior_series) - (WINDOW_SIZE + 1))
+    window = prior_series[start:]
     return [
         {
             "date": window[i].ts.date().isoformat(),
@@ -77,12 +81,12 @@ async def build_evidence(pool: asyncpg.Pool, ticker: str, flag_id: int) -> dict 
     if flag["ticker"] != ticker:
         raise TickerMismatchError(f"flag {flag_id} belongs to {flag['ticker']}, not {ticker}")
 
-    baseline = await load_latest_baseline(pool, ticker)
+    baseline = await load_baseline_as_of(pool, ticker, flag["trading_day"])
     if baseline is None or baseline.mean_return_30d is None or baseline.stdev_return_30d is None:
         return None  # nothing authoritative to display evidence against — do not fabricate
 
     series = await load_price_series(pool, ticker)
-    points = _baseline_window_points(series)
+    points = _baseline_window_points(series, flag["trading_day"])
     if not points:
         return None
 

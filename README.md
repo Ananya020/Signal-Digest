@@ -44,12 +44,12 @@ PostgreSQL
 - **Primary trigger:** price z-score, `(today_return − mean_return_30d) / stdev_return_30d`, crossing `|z| ≥ 2.0`. Severity bands: `notable` (2.0–2.5), `significant` (2.5–3.5), `extreme` (≥3.5).
 - **Annotations, never folded into the trigger:** volume ratio (`today_volume / avg_volume_30d`, `None`/"unknown" rather than a fabricated `0x` on a missing tick) and sector-relative context (`sector_wide` vs. `stock_specific`, `NULL` when fewer than 2 other sector members have a valid tick that cycle — never computed off a partial sector). Both are annotations on the z-score-driven flag, never averaged or weighted into one composite score. The reason is defensibility: one number plus plain English beats justifying arbitrary weights in a Q&A.
 - **Confidence gate:** `baselines.sample_size < 20` suppresses a flag entirely rather than emitting a confident-looking number off a handful of days of history.
-- **`volatility_regime` is computed and stored but not surfaced in the digest — a documented product decision, not a limitation being hidden.** It's a real secondary signal (`stdev_5d`/`stdev_30d` crossing 1.5), and the scoring engine computes and persists it exactly as designed. But because baselines in this build are static (computed once, not recomputed per day), the same handful of tickers cross that ratio on *every* replay cycle with the same generic text — repetitive noise, not a meaningful "something changed" signal, in a build without rolling baselines. `GET /digest` filters to `price_zscore` only; nothing about the computation changed, and this is reversible in one line once rolling baselines exist.
+- **`volatility_regime` is computed and stored but still not surfaced in the digest — a deliberate, re-confirmed product decision, not a limitation being hidden.** It's a real secondary signal (`stdev_5d`/`stdev_30d` crossing 1.5). Baselines are no longer static (see §6/§8) — they now roll forward per trading day, and observed output confirms the repetitiveness that originally motivated hiding this signal is gone: across a 20-cycle replay run, the set of flagged tickers genuinely rotates day to day (e.g. a `RELIANCE.NS`/`ICICIBANK.NS`/`WIPRO.NS`/`NESTLEIND.NS` cluster for several consecutive days, then a shift to `NTPC.NS`/`POWERGRID.NS`, then `MARUTI.NS`/`ADANIENT.NS`/`ASIANPAINT.NS`) rather than the same handful of tickers firing every single cycle. `GET /digest` still filters to `price_zscore` only — re-surfacing `volatility_regime` is a separate UX decision to be made after more observation, not something this workstream flips on its own.
 
 ## 6. Data model
 
 - `price_ticks` — immutable source of truth; needed to recompute anything after a fault-recovery.
-- `baselines` — precomputed once, not derived per-request (the "rebuild on every read" anti-pattern Groww's own Holdings post is explicitly about).
+- `baselines` — precomputed ahead of scoring, not derived per-request (the "rebuild on every read" anti-pattern Groww's own Holdings post is explicitly about). One row per `(ticker, as_of_date)`, rolled forward once per scheduler cycle before that cycle's ticks are scored — not a single static row per ticker (see §8).
 - `flags` — durable record of *why* something was surfaced; backs the evidence endpoint and the uniqueness constraint that prevents duplicate flags.
 - `flag_ack` / `watchlist_ack_state` — split deliberately: the aggregate hash is a cheap ETag-style short-circuit; the per-flag table is the fine-grained truth for "which specific things are new."
 
@@ -86,13 +86,13 @@ A few of the more interesting failure scenarios (full list of 14 in `RELIABILITY
 - **Deterministic scoring over ML/LLM.** An LLM-flavored watchlist is the generic 2026 move, not the differentiated one — Groww's own AI assistant (GR 1) is positioned as "informative, not autonomous," and this project applies the same principle to its own core decision logic. The one narrow, optional LLM use case that was scoped out: phrasing the one-line explanation from an already-computed structured signal — never touching decision logic, and cut first under time pressure in favor of the deterministic template that's actually shipped.
 - **Modular monolith over microservices** — see §4; a service split reintroduces the exact transaction-boundary bug class this design proactively avoids.
 - **yfinance over Groww's live Trading API** — see §4; real data, disclosed simulation, no viable path to a paid F&O account in this window.
-- **Static baselines, stated plainly, not hidden.** One baseline row per ticker, computed once from the full historical pull, not recomputed per replay day. This is what makes `volatility_regime` repetitive enough to exclude from the digest (§5) and means an early replay day is technically scored against a baseline informed by later data — a known, explicit simplification, not a walk-forward-correct backtest.
+- **Rolling, look-ahead-safe baselines — no longer a static simplification.** A baseline for trading day N is recomputed each scheduler cycle from only the days strictly before N (`compute_baseline_as_of`), stored as a new `(ticker, as_of_date)` row rather than overwritten in place — so day N's own move never leaks into its own baseline, and `sample_size` genuinely reflects how much history existed before that day (observed growing from 24 toward the 30-day cap across early replay days in a real run, not a fixed 30 from day one). This replaces the earlier one-row-per-ticker static baseline, and is what made `volatility_regime`'s output worth re-examining (§5).
 
 ## 9. Scalability
 
 - The ETag short-circuit means a client with an unchanged view gets a `304` without the server ever running the unacked-flags join — at real scale, that's the difference between recomputing a digest on every poll and skipping the query entirely.
 - Baselines are batch-computed once, not derived per-request — the anti-pattern the Holdings post itself is about.
-- What would actually need to change for real scale: rolling baseline recomputation (currently static, §8); a real live market data feed in place of the replay provider; and a ticker universe that isn't fixed at 35 hand-curated names (today's sector tagging and universe validation both assume a small, known set).
+- What would actually need to change for real scale: incremental (not full-recompute-per-cycle) baseline maintenance as the universe or tick rate grows (§8); a real live market data feed in place of the replay provider; and a ticker universe that isn't fixed at 35 hand-curated names (today's sector tagging and universe validation both assume a small, known set).
 
 ## 10. Setup
 
@@ -129,24 +129,27 @@ npm run dev   # http://localhost:3000
 
 ## 11. Testing
 
-**103 backend tests** (pytest, real Postgres — not mocks, for anything touching a transaction boundary) + **29 frontend tests** (vitest) = **132 tests**, all currently passing. A few that actually prove something non-obvious, not just exercise a happy path:
+**109 backend tests** (pytest, real Postgres — not mocks, for anything touching a transaction boundary) + **29 frontend tests** (vitest) = **138 tests**, all currently passing. A few that actually prove something non-obvious, not just exercise a happy path:
 
 - **The ack-bust escalation/de-escalation pair** (`test_flags_ack_bust.py`) — one test proves escalation busts the ack; a second, explicitly a "negative-space" test, proves de-escalation does *not* — the asymmetry in §6 is enforced code, not just a design doc claim.
 - **The `RETURNING`-behavior test from the Phase 2 correction** (`test_postgres_returning_yields_zero_rows_when_conflict_where_is_false`) — asserts, against real Postgres, the exact row-count `RETURNING` yields when an `ON CONFLICT DO UPDATE ... WHERE` clause evaluates false. That single fact is what caught the original ack-bust upsert conflating "should the ack be busted" with "should the evidence refresh" — a bug in the originally-documented SQL, caught before it shipped.
 - **The timezone boundary test** (`test_reliability_timezone.py`) — a tick timestamped 19:30 UTC (already 01:00 IST the next calendar day) must bucket into the correct IST trading day, not the UTC one. This test caught a real bug: `trading_day` was computed with `.date()` directly on a UTC-aware timestamp, masked in production data only because the real ingestion path happens to anchor at 15:30 IST — safely mid-day.
+- **The look-ahead-safety test for rolling baselines** (`test_compute_baseline_as_of_excludes_the_scored_day_own_move`) — seeds a violent price move on the exact day being scored and asserts that day's own baseline shows no trace of it, then cross-checks against the naive (look-ahead-*unsafe*) full-series computation to prove the difference is real, not incidental.
 
 ## 12. Known limitations
 
 Stated plainly, not hedged:
 
-- **Baselines are static, not rolling.** One row per ticker, computed once. See §8.
-- **`volatility_regime` is computed and stored but not surfaced in the digest.** See §5 — a documented product decision, not an oversight.
+- **`volatility_regime` is computed and stored but still not surfaced in the digest.** See §5 — a documented product decision, re-confirmed (not overturned) now that baselines roll forward.
+- **Rolling baselines recompute from the full `price_ticks` history every cycle, not incrementally.** Each cycle re-derives each ticker's look-ahead-safe window from scratch (`load_price_series` + filter) rather than maintaining running sums — correct and simple at this scale (34 tickers, ~1 cycle/5s), but not the approach a much larger universe or a much shorter interval would want.
+- **No walk-forward backtesting infrastructure.** Rolling recomputation is correct day-by-day, but there's no separate historical backtest harness beyond replaying the same live pipeline — out of scope for this workstream.
 - **`TATAMOTORS.NS` is absent from the universe.** Yahoo Finance returned a 404/no-data response for this real symbol during the historical backfill — 34 of the 35 hand-curated tickers are seeded; no fabricated substitute was inserted.
 - **Same-key severity escalation is architecturally deterministic under this build's daily-close replay, not intraday ticks.** `(ticker, trading_day, signal_type)` is scored from one fixed close against one fixed baseline — re-scoring the same trading day later always reproduces the identical z-score and severity, because neither input has changed. A production system fed real intraday ticks would see this fire organically within a session, as multiple ticks change that day's return-so-far. The ack-bust transaction itself is verified correct independent of this (§11, §6) — for a *live, on-stage* demonstration of the mechanism within a 5-minute window, `backend/scripts/seed_demo_escalation_precondition.py` seeds one flag at a deliberately-low placeholder severity for a real, not-yet-reached day (after independently verifying, with the real scoring functions, what that day's true severity will be), then lets the live scheduler correct it for real. This is disclosed here and in the script's own docstring — not presented as if it happened organically.
 
 ## 13. Future improvements
 
-- Rolling baseline recomputation (removes the static-baseline simplification and makes `volatility_regime` viable to re-surface).
+- Incremental baseline maintenance (running sums instead of a full-history recompute per cycle) if the ticker universe or scheduler interval scaled up meaningfully.
+- Deciding whether to re-surface `volatility_regime` in the digest now that rolling baselines make its output genuinely non-repetitive (§5) — an intentional UX decision to make with more observation, not a default flip.
 - Real NSE trading-calendar/holiday gating (currently out of scope, not modeled).
 - The optional LLM-explanation-phrasing layer (§8) — already architecturally isolated from decision logic, ready to slot in as a pure post-processing step.
 - Multi-watchlist support (the data model already allows multiple watchlists per user; the frontend currently manages one).

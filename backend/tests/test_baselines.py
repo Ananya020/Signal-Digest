@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from app.data.baselines import compute_baseline_from_series
+from app.data.baselines import compute_baseline_as_of, compute_baseline_from_series
 from app.providers.historical_replay import PricePoint
 
 
@@ -67,3 +67,64 @@ def test_current_day_return_included_in_its_own_window():
     result = compute_baseline_from_series("X.NS", series)
     assert result is not None
     assert result.mean_return_30d > 0.4  # the +100% day pulls the mean up sharply
+
+
+# --- Workstream 1: rolling, look-ahead-safe baseline recomputation --------
+
+
+def test_compute_baseline_as_of_excludes_the_scored_day_own_move():
+    # 30 flat +1% days, then day 30 (index 30) has a violent +100% move.
+    # A baseline "as of" day 30 must be computed from days strictly BEFORE
+    # day 30 — day 30's own huge move must not leak into its own baseline,
+    # unlike compute_baseline_from_series's "as of the last point" convention.
+    prices = [100.0]
+    for _ in range(29):
+        prices.append(prices[-1] * 1.01)
+    prices.append(prices[-1] * 2.0)  # day 30: violent +100% move
+    series = make_series(prices)
+    as_of_date = series[30].ts.date()
+
+    baseline = compute_baseline_as_of("X.NS", series, as_of_date)
+    assert baseline is not None
+    # Every return in the look-ahead-safe window is the flat ~+1% move —
+    # none of them is anywhere near +100%, proving day 30 didn't leak in.
+    assert baseline.mean_return_30d < 0.02
+    assert baseline.stdev_5d is not None and baseline.stdev_5d < 0.01
+
+    # Sanity check against the naive (look-ahead-UNSAFE) computation over the
+    # full series, which DOES include day 30's move and is pulled up sharply.
+    unsafe = compute_baseline_from_series("X.NS", series)
+    assert unsafe is not None
+    assert unsafe.mean_return_30d > baseline.mean_return_30d
+
+
+def test_compute_baseline_as_of_returns_none_with_fewer_than_two_prior_points():
+    # Only one point exists before as_of_date -> not even one return to
+    # compute -> None, mirroring compute_baseline_from_series's own guard.
+    series = make_series([100.0, 101.0, 102.0])
+    as_of_date = series[1].ts.date()  # only series[0] is strictly before it
+    assert compute_baseline_as_of("X.NS", series, as_of_date) is None
+
+
+def test_sample_size_grows_as_replay_advances_then_caps_at_thirty():
+    # 40 days of flat +1% history. Early "as of" days must have a smaller
+    # sample_size than later ones — the confidence gate should meaningfully
+    # vary across the replay sequence, not be dead code.
+    prices = [100.0]
+    for _ in range(39):
+        prices.append(prices[-1] * 1.01)
+    series = make_series(prices)
+
+    sample_sizes = []
+    for step in range(1, len(series)):
+        as_of_date = series[step].ts.date()
+        baseline = compute_baseline_as_of("X.NS", series, as_of_date)
+        sample_sizes.append(baseline.sample_size if baseline else 0)
+
+    # Strictly non-decreasing throughout, and strictly increasing while
+    # still below the 30-day cap.
+    for earlier, later in zip(sample_sizes, sample_sizes[1:]):
+        assert later >= earlier
+    assert sample_sizes[0] < sample_sizes[10] < 30
+    # Caps at 30 once enough prior history exists (step 31 has 31 prior points -> 30 returns).
+    assert sample_sizes[-1] == 30

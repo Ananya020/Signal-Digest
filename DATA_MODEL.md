@@ -81,7 +81,7 @@ provider_state (
 
 ## Why each table exists
 - `price_ticks` — immutable source of truth, needed to recompute anything after fault-recovery.
-- `baselines` — precomputed, not derived per-request (the "rebuild on every read" anti-pattern Groww's own Holdings post is about).
+- `baselines` — precomputed ahead of scoring, not derived per-request (the "rebuild on every read" anti-pattern Groww's own Holdings post is about). **Workstream 1 (2026-09-05):** genuinely per-day now — one row per `(ticker, as_of_date)`, recomputed once per scheduler cycle from only the days strictly before `as_of_date` (look-ahead-safe), inserted as a new row rather than overwritten. See `backend/app/data/baselines.py::compute_baseline_as_of` / `load_baseline_as_of`. `load_latest_baseline` still exists for "whatever's most recently computed, regardless of day" use cases (the Phase 1 seed script, ad-hoc scripts) — scoring and evidence must use the per-day functions, never this one.
 - `flags` — durable record of *why* something was surfaced; required for the evidence endpoint and the uniqueness constraint that prevents duplicate flags.
 - `flag_ack` / `watchlist_ack_state` split deliberately: aggregate hash = cheap ETag-style short-circuit; per-flag table = fine-grained truth for "which specific things are new."
 

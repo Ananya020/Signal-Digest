@@ -119,13 +119,29 @@ async def upsert_baseline(pool: asyncpg.Pool, result: BaselineResult) -> None:
     )
 
 
+def _row_to_baseline(row) -> BaselineResult:
+    return BaselineResult(
+        ticker=row["ticker"],
+        as_of_date=row["as_of_date"],
+        mean_return_30d=float(row["mean_return_30d"]) if row["mean_return_30d"] is not None else None,
+        stdev_return_30d=float(row["stdev_return_30d"]) if row["stdev_return_30d"] is not None else None,
+        avg_volume_30d=float(row["avg_volume_30d"]) if row["avg_volume_30d"] is not None else None,
+        stdev_5d=float(row["stdev_5d"]) if row["stdev_5d"] is not None else None,
+        stdev_30d=float(row["stdev_30d"]) if row["stdev_30d"] is not None else None,
+        sample_size=row["sample_size"],
+    )
+
+
 async def load_latest_baseline(pool: asyncpg.Pool, ticker: str) -> BaselineResult | None:
-    """Phase 2 scoring reads this. Note: Phase 1's backfill computes exactly
-    one baseline row per ticker (as of the last date in its ~1y history) —
-    baselines are not recomputed per replay day. Scoring against earlier
-    replay days therefore uses a baseline that is technically "from the
-    future" relative to that replay day; this is a known Phase 2
-    simplification (see PROGRESS.md), not a walk-forward-correct backtest."""
+    """Most-recently-computed baseline row for `ticker`, regardless of which
+    trading day it's valid for. Used by one-off scripts/tests that just want
+    "whatever's there" (e.g. the Phase 1 seed script's own verification).
+
+    Scoring a specific trading day must NOT use this — use
+    `load_baseline_as_of()` / `compute_baseline_as_of()` instead, which are
+    look-ahead-safe. See Workstream 1 (PROGRESS.md): baselines are now one
+    row per (ticker, as_of_date), rolled forward per replay day, not a
+    single static row per ticker."""
     row = await pool.fetchrow(
         """
         SELECT ticker, as_of_date, mean_return_30d, stdev_return_30d,
@@ -137,16 +153,47 @@ async def load_latest_baseline(pool: asyncpg.Pool, ticker: str) -> BaselineResul
     )
     if row is None:
         return None
-    return BaselineResult(
-        ticker=row["ticker"],
-        as_of_date=row["as_of_date"],
-        mean_return_30d=float(row["mean_return_30d"]) if row["mean_return_30d"] is not None else None,
-        stdev_return_30d=float(row["stdev_return_30d"]) if row["stdev_return_30d"] is not None else None,
-        avg_volume_30d=float(row["avg_volume_30d"]) if row["avg_volume_30d"] is not None else None,
-        stdev_5d=float(row["stdev_5d"]) if row["stdev_5d"] is not None else None,
-        stdev_30d=float(row["stdev_30d"]) if row["stdev_30d"] is not None else None,
-        sample_size=row["sample_size"],
+    return _row_to_baseline(row)
+
+
+async def load_baseline_as_of(pool: asyncpg.Pool, ticker: str, as_of_date: date) -> BaselineResult | None:
+    """Exact per-day lookup: the baseline that was (or will be) used to score
+    `as_of_date` specifically — i.e. the row `compute_baseline_as_of()`
+    produced for that exact date. Distinct from `load_latest_baseline()`,
+    which ignores which day is being scored."""
+    row = await pool.fetchrow(
+        """
+        SELECT ticker, as_of_date, mean_return_30d, stdev_return_30d,
+               avg_volume_30d, stdev_5d, stdev_30d, sample_size
+        FROM baselines WHERE ticker = $1 AND as_of_date = $2
+        """,
+        ticker, as_of_date,
     )
+    if row is None:
+        return None
+    return _row_to_baseline(row)
+
+
+def compute_baseline_as_of(ticker: str, points: list[PricePoint], as_of_date: date) -> BaselineResult | None:
+    """Look-ahead-safe rolling baseline for scoring `as_of_date` (Workstream
+    1 — see PROGRESS.md). Uses ONLY points strictly before `as_of_date`; the
+    day being scored never contributes to its own baseline, unlike
+    `compute_baseline_from_series`'s "as of the last point in the series"
+    convention (still correct for that function's own callers — the one-off
+    full-history seed baseline — just not for rolling per-day recomputation).
+
+    `sample_size` therefore reflects the true look-ahead-safe window
+    available before `as_of_date`, not the full-history count — it will be
+    smaller on early replay days than on later ones by construction.
+
+    Returns None if there isn't even one prior return to compute (mirrors
+    `compute_baseline_from_series`'s own guard)."""
+    prior_points = [p for p in points if p.ts.date() < as_of_date]
+    result = compute_baseline_from_series(ticker, prior_points)
+    if result is None:
+        return None
+    result.as_of_date = as_of_date  # this baseline is valid FOR as_of_date, not derived from its own last point
+    return result
 
 
 async def compute_and_store_baseline(pool: asyncpg.Pool, ticker: str) -> BaselineResult | None:

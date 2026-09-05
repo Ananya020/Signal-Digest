@@ -47,15 +47,18 @@ async def test_failure_on_one_ticker_does_not_roll_back_earlier_committed_ticker
 
     # Simulate the scheduler dying partway through: test_ticker succeeds
     # (processed first, per the tickers list order), test_ticker_2's
-    # baseline load raises — as if the process crashed mid-batch.
-    real_load_latest_baseline = scoring_pipeline.load_latest_baseline
+    # rolling-baseline price series load raises — as if the process crashed
+    # mid-batch. (Workstream 1: the pipeline now derives each ticker's
+    # baseline from `load_price_series` + `compute_baseline_as_of` rather
+    # than reading a precomputed static row.)
+    real_load_price_series = scoring_pipeline.load_price_series
 
-    async def flaky_load_latest_baseline(pool, ticker):
+    async def flaky_load_price_series(pool, ticker):
         if ticker == test_ticker_2:
             raise RuntimeError("simulated scheduler crash mid-batch")
-        return await real_load_latest_baseline(pool, ticker)
+        return await real_load_price_series(pool, ticker)
 
-    monkeypatch.setattr(scoring_pipeline, "load_latest_baseline", flaky_load_latest_baseline)
+    monkeypatch.setattr(scoring_pipeline, "load_price_series", flaky_load_price_series)
 
     with pytest.raises(RuntimeError, match="simulated scheduler crash"):
         await scoring_pipeline.run_scoring_cycle(db_pool, provider, [test_ticker, test_ticker_2], sector_map)
@@ -76,7 +79,7 @@ async def test_failure_on_one_ticker_does_not_roll_back_earlier_committed_ticker
     # Retry (scheduler's next tick, same replay position — nothing advanced
     # since the cycle raised before reaching the caller's advance() call):
     # completes the remainder without duplicating test_ticker's existing rows.
-    monkeypatch.setattr(scoring_pipeline, "load_latest_baseline", real_load_latest_baseline)
+    monkeypatch.setattr(scoring_pipeline, "load_price_series", real_load_price_series)
     result = await scoring_pipeline.run_scoring_cycle(db_pool, provider, [test_ticker, test_ticker_2], sector_map)
     assert result["scored"] is True
 
