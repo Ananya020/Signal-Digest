@@ -24,6 +24,18 @@ for the latter. Phase 1 treats them as the same figure (stdev of the 30-day
 return window) since only one 30-day return window exists to compute from —
 there is no second, differently-defined 30-day series in scope. Flagged here
 rather than silently picking one and hiding the ambiguity.
+
+Deployment-prep correction (2026-09-06): known data-quality exclusions (see
+`app/data/exclusions.py` — a real corporate-action-driven price reset for
+TRENT.NS/ITC.NS on 2026-01-01, confirmed via live yfinance re-fetch, not an
+ingestion bug) are applied here, filtering the specific excluded return out
+of every rolling window before either `stdev_return_30d`/`stdev_30d`/`stdev_5d`
+is computed from it. The underlying price observation is never touched —
+only the one return attributed to that date is excluded from consideration.
+The window then reaches one extra real trading day further back to keep
+sample_size at a full 30 when enough prior history exists — see
+exclusions.py's module docstring for why that's the deliberate choice here,
+not silent/incidental behavior.
 """
 
 from dataclasses import dataclass
@@ -32,6 +44,7 @@ from statistics import mean, stdev
 
 import asyncpg
 
+from app.data.exclusions import excluded_dates_for
 from app.providers.historical_replay import PricePoint
 
 MIN_SAMPLE_SIZE = 20  # below this, DATA_MODEL.md says "not enough history"
@@ -60,7 +73,16 @@ def compute_baseline_from_series(ticker: str, points: list[PricePoint]) -> Basel
     volumes = [p.volume for p in points]
     as_of_date = points[-1].ts.date()
 
-    returns = [prices[i] / prices[i - 1] - 1 for i in range(1, len(prices))]
+    # returns[i-1] is attributed to points[i]'s date (see module docstring) —
+    # excluded per app/data/exclusions.py, not by removing the underlying
+    # price point, so points[i-1]'s own return (attributed to the PRECEDING
+    # date) is computed normally and unaffected.
+    excluded = excluded_dates_for(ticker)
+    returns = [
+        prices[i] / prices[i - 1] - 1
+        for i in range(1, len(prices))
+        if points[i].ts.date() not in excluded
+    ]
 
     window_30 = returns[-30:]
     window_5 = returns[-5:]

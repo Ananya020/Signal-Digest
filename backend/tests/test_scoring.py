@@ -94,6 +94,46 @@ def test_confidence_gate_suppresses_volatility_regime_flag_below_min_sample_size
     assert result is None
 
 
+def test_known_data_exclusion_suppresses_price_zscore_flag_regardless_of_how_extreme():
+    # TRENT.NS/2026-01-01 is a real KNOWN_EXCLUSIONS entry (app/data/exclusions.py).
+    # An extreme return here must never produce a flag, no matter how large.
+    baseline = make_baseline(sample_size=30)
+    result = score_price_zscore(
+        ticker="TRENT.NS", trading_day=date(2026, 1, 1), today_return=-0.90,
+        today_volume=1_000_000, baseline=baseline, peer_returns=[],
+        computed_at=datetime.now(timezone.utc), provider_state="real_historical",
+    )
+    assert result is None
+
+
+def test_known_data_exclusion_suppresses_volatility_regime_flag_regardless_of_ratio():
+    baseline = make_baseline(sample_size=30, stdev_5d=1.0, stdev_30d=0.02)
+    result = score_volatility_regime(
+        ticker="ITC.NS", trading_day=date(2026, 1, 1), baseline=baseline,
+        computed_at=datetime.now(timezone.utc), provider_state="real_historical",
+    )
+    assert result is None
+
+
+def test_known_data_exclusion_only_suppresses_the_exact_excluded_ticker_and_date():
+    baseline = make_baseline(sample_size=30)
+    # Same ticker, different day -> not suppressed.
+    result_other_day = score_price_zscore(
+        ticker="TRENT.NS", trading_day=date(2026, 1, 2), today_return=-0.90,
+        today_volume=1_000_000, baseline=baseline, peer_returns=[],
+        computed_at=datetime.now(timezone.utc), provider_state="real_historical",
+    )
+    assert result_other_day is not None
+
+    # Same day, different (non-excluded) ticker -> not suppressed.
+    result_other_ticker = score_price_zscore(
+        ticker="RELIANCE.NS", trading_day=date(2026, 1, 1), today_return=-0.90,
+        today_volume=1_000_000, baseline=baseline, peer_returns=[],
+        computed_at=datetime.now(timezone.utc), provider_state="real_historical",
+    )
+    assert result_other_ticker is not None
+
+
 def test_price_zscore_flag_emitted_when_sample_size_sufficient():
     baseline = make_baseline(sample_size=30)
     result = score_price_zscore(

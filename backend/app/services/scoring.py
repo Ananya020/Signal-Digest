@@ -8,6 +8,17 @@ gives overlapping-looking ranges "notable 2.0-2.5 / significant 2.5-3.5 /
 extreme >3.5"): each band's *lower* bound is inclusive, so a boundary value
 belongs to the band it opens — 2.0 is notable, 2.5 is significant, 3.5 is
 extreme. This is consistent with the stated trigger "flag if |z| >= 2.0".
+
+Deployment-prep correction (2026-09-06): a (ticker, trading_day) matching
+`app/data/exclusions.py::KNOWN_EXCLUSIONS` never produces a flag of either
+signal type — not just a baseline-window exclusion (app/data/baselines.py
+already handles that separately). A known corporate-action price reset isn't
+a real trading anomaly; scoring `today_return` on that specific day would
+compare a corrupted numerator against an otherwise-correct baseline and
+produce exactly the kind of implausible flag this exclusion exists to
+prevent (see DATA_MODEL.md's "Data exclusions" section). Checked and logged
+the same way as the existing `sample_size < MIN_SAMPLE_SIZE` gate, first,
+before any other computation.
 """
 
 from dataclasses import dataclass
@@ -16,6 +27,7 @@ from statistics import mean
 from zoneinfo import ZoneInfo
 
 from app.data.baselines import MIN_SAMPLE_SIZE, BaselineResult
+from app.data.exclusions import excluded_dates_for
 from app.providers.base import Tick
 
 IST = ZoneInfo("Asia/Kolkata")
@@ -138,6 +150,10 @@ def score_price_zscore(
     computed_at: datetime,
     provider_state: str,
 ) -> FlagCandidate | None:
+    if trading_day in excluded_dates_for(ticker):
+        print(f"[scoring] {ticker} {trading_day}: known data exclusion, suppressing price_zscore flag")
+        return None
+
     if baseline.sample_size < MIN_SAMPLE_SIZE:
         print(f"[scoring] {ticker} {trading_day}: sample_size={baseline.sample_size} "
               f"< {MIN_SAMPLE_SIZE} — insufficient history, suppressing price_zscore flag")
@@ -174,6 +190,10 @@ def score_volatility_regime(
     computed_at: datetime,
     provider_state: str,
 ) -> FlagCandidate | None:
+    if trading_day in excluded_dates_for(ticker):
+        print(f"[scoring] {ticker} {trading_day}: known data exclusion, suppressing volatility_regime flag")
+        return None
+
     if baseline.sample_size < MIN_SAMPLE_SIZE:
         print(f"[scoring] {ticker} {trading_day}: sample_size={baseline.sample_size} "
               f"< {MIN_SAMPLE_SIZE} — insufficient history, suppressing volatility_regime flag")
