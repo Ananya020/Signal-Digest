@@ -16,6 +16,9 @@
 </div>
 
 ---
+## 100-word product pitch
+
+Signal Digest tells investors what actually deserves their attention—not just what moved. Instead of applying arbitrary percentage thresholds, it compares every stock’s price movement against its own rolling 30-day behavior, identifying statistically unusual moves with deterministic z-scores. Volume and sector context explain why each signal matters without hiding the logic behind an AI score. The product remembers what users have already seen: acknowledged signals automatically resurface when they materially worsen, showing exactly how they evolved. Built as a transactional modular monolith with explicit freshness states and live fault injection, Signal Digest prioritizes correctness and resilience. Real NSE historical data is replayed transparently to simulate live markets.
 
 ## 📑 Table of Contents
 
