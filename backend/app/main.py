@@ -10,6 +10,7 @@ from app.providers.fault_injecting import FaultInjectingProvider
 from app.providers.historical_replay import HistoricalReplayProvider, ReplayClock, load_history
 from app.providers.live_delayed_nse import LiveDelayedNSEProvider
 from app.routers import admin, health, provider_status, tickers, watchlists
+from app.services.schema_check import check_schema_or_raise
 from app.services.scoring_pipeline import ALL_TICKERS, SECTOR_BY_NSE_TICKER, run_scoring_cycle
 
 
@@ -17,6 +18,14 @@ from app.services.scoring_pipeline import ALL_TICKERS, SECTOR_BY_NSE_TICKER, run
 async def lifespan(app: FastAPI):
     await connect_db()
     pool = get_pool()
+
+    # Fail fast with a specific, actionable error (naming the missing
+    # table/column and which migration file adds it) if a migration was
+    # forgotten against this database — before touching provider_state or
+    # starting the scheduler. See app/services/schema_check.py's docstring
+    # for the real incident this exists to turn into a one-line error next
+    # time, instead of an opaque asyncpg.exceptions.UndefinedColumnError.
+    await check_schema_or_raise(pool)
 
     history = await load_history(pool, ALL_TICKERS)
     base_provider = HistoricalReplayProvider(history=history, clock=ReplayClock(start_step=1))
