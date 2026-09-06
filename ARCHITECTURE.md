@@ -5,7 +5,7 @@
 Next.js Frontend (Dashboard / Digest / Detail / "show your work" chart / fault-injection demo toggle)
         │ HTTPS JSON
         ▼
-FastAPI Backend — single modular monolith (not microservices; see CLAUDE.md for why)
+FastAPI Backend 
   ├─ API layer (routers) + simple JWT auth (single demo account, no multi-tenant RBAC)
   │    Phase 3: JWT not yet implemented — `app/auth.py::get_current_user()` is the single
   │    seam standing in for it (always returns one hardcoded demo user UUID). Every
@@ -95,7 +95,7 @@ This exercises the exact same code path a real outage would hit — that's what 
 
 **Idempotency:** `POST /items` upserts on composite PK. `POST /ack` uses `ON CONFLICT DO NOTHING` — safe to replay, which is what makes refresh-mid-ack and duplicate requests safe by construction.
 
-## Frontend (Phase 5)
+## Frontend 
 
 Next.js App Router, `"use client"` throughout (no server components needed at this scale) — `frontend/app/page.tsx` is the entire dashboard. Client-side state is deliberately split into: a pure ETag-poll reducer (`lib/digestPoll.ts`, 304 leaves state untouched by reference, 200 updates it), independent 3s (`useProviderStatus`) and 5s (`useDigest`, matching the backend's default scheduler cadence) polling hooks, and a `viewed` vs. `latest` distinction in `page.tsx` so a background poll never silently rewrites what the user is looking at — new flags surface as a pull-in affordance instead. Ack has a 1.5s dwell delay (`lib/dwell.ts`) before the ack control is even clickable, per the Stage 2 UX design. The evidence chart is hand-rolled inline SVG (`components/EvidencePanel.tsx`) — no charting library. Severity/freshness badges always render color+icon+text together through one shared `Badge` component, enforced structurally (tested) rather than by convention. Bootstrap watchlist creation (`lib/bootstrap.ts`) always checks `GET /watchlists` first and only creates+seeds on an empty result — verified live to never duplicate across reloads.
 
