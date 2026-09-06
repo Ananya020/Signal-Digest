@@ -7,6 +7,7 @@ import { DigestBrief } from "@/components/DigestBrief";
 import { DigestList } from "@/components/DigestList";
 import { EvidencePanel } from "@/components/EvidencePanel";
 import { HistoryPanel } from "@/components/HistoryPanel";
+import { ProductTour } from "@/components/ProductTour";
 import { WatchlistManager, type WatchlistManagerHandle } from "@/components/WatchlistManager";
 import { useDigest } from "@/hooks/useDigest";
 import { useProviderStatus } from "@/hooks/useProviderStatus";
@@ -52,6 +53,7 @@ export default function Home() {
   const [evidenceError, setEvidenceError] = useState<string | null>(null);
 
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const [historyTarget, setHistoryTarget] = useState<{ ticker: string; name: string } | null>(null);
 
   const [ackedCount, setAckedCount] = useState(0);
@@ -99,6 +101,7 @@ export default function Home() {
       <AppHeader
         onAboutClick={() => setAboutOpen(true)}
         onAddStockClick={() => watchlistManagerRef.current?.focusSearch()}
+        onTourClick={() => setTourOpen(true)}
         providerStatus={providerStatus}
         onFaultChanged={() => pollOnce()}
       />
@@ -147,6 +150,12 @@ export default function Home() {
       )}
 
       {aboutOpen && <AboutPanel onClose={() => setAboutOpen(false)} />}
+
+      <ProductTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+        demoMode={providerStatus?.demo_mode ?? false}
+      />
 
       {historyTarget && (
         <HistoryPanel

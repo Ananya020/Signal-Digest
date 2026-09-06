@@ -92,6 +92,7 @@ export const WatchlistManager = forwardRef<
 
   return (
     <section
+      data-tour="watchlist"
       aria-labelledby="watchlist-heading"
       className="rounded-xl border border-border bg-surface-raised shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >

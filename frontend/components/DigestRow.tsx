@@ -60,7 +60,7 @@ export function DigestRow({
       />
 
       {/* Unusualness first — this is the point of the product. */}
-      <div className="flex items-center gap-4 md:w-40 md:flex-shrink-0 md:flex-col md:items-start md:gap-1.5">
+      <div data-tour="row-severity" className="flex items-center gap-4 md:w-40 md:flex-shrink-0 md:flex-col md:items-start md:gap-1.5">
         <div className="flex items-baseline gap-1">
           <span className={`num font-display text-3xl font-bold leading-none ${dirTextClass}`}>
             {Math.abs(zScore).toFixed(1)}σ
@@ -115,6 +115,7 @@ export function DigestRow({
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <button
+            data-tour="show-evidence"
             onClick={() => onSelect(flag)}
             aria-pressed={selected}
             className={`focus-ring inline-flex items-center gap-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${

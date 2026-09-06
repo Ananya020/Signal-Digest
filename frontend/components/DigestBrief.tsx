@@ -34,7 +34,7 @@ export function DigestBrief({
   const sectorWide = (flags ?? []).filter((f) => f.sector_relative === "sector_wide").length;
 
   return (
-    <section aria-labelledby="brief-heading" className="flex flex-col gap-3 border-b border-hairline pb-5">
+    <section data-tour="brief" aria-labelledby="brief-heading" className="flex flex-col gap-3 border-b border-hairline pb-5">
       <h2 id="brief-heading" className="eyebrow">
         Today
       </h2>

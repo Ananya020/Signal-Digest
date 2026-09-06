@@ -1,6 +1,6 @@
 "use client";
 
-import { Activity, Search } from "lucide-react";
+import { Activity, Compass, Search } from "lucide-react";
 import type { ProviderStatus } from "@/lib/types";
 import { DemoControls } from "./DemoControls";
 import { FreshnessBanner } from "./FreshnessBanner";
@@ -21,11 +21,13 @@ import { FreshnessBanner } from "./FreshnessBanner";
 export function AppHeader({
   onAboutClick,
   onAddStockClick,
+  onTourClick,
   providerStatus,
   onFaultChanged,
 }: {
   onAboutClick: () => void;
   onAddStockClick: () => void;
+  onTourClick: () => void;
   providerStatus: ProviderStatus | null;
   onFaultChanged: () => void;
 }) {
@@ -58,6 +60,15 @@ export function AppHeader({
           >
             <Search className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">Add stock</span>
+          </button>
+
+          <button
+            onClick={onTourClick}
+            aria-label="Take a tour"
+            className="focus-ring inline-flex shrink-0 items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-ink-muted transition-colors hover:bg-surface-subtle hover:text-ink"
+          >
+            <Compass className="size-4" aria-hidden="true" />
+            <span className="hidden sm:inline">Take a tour</span>
           </button>
 
           <button

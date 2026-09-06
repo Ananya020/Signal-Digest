@@ -52,6 +52,27 @@ Fix: `last_successful_fetch` now persists via the same atomic UPSERT as
   change and by the scheduler on every tick (so an unclean crash during
   `'normal'` operation loses at most one scheduler interval of freshness
   precision, not the whole restart's worth).
+
+## replay_step persistence — second instance of the same bug class
+
+Found on the real deployed instance (Render free tier spin-down/wake), not
+in local testing: `HistoricalReplayProvider`'s `ReplayClock` was
+process-memory only. A restart reset it to step 0, so the scheduler
+silently re-walked history from day one — no new flags scored for ~20+
+ticks while `sample_size` re-climbed past the confidence gate — even though
+previously-computed flags remained correctly stored in Postgres. Exactly
+the same shape as the `last_successful_fetch` bug above: an in-memory value
+that must survive a restart wasn't being persisted.
+
+Fix, same pattern: `replay_step` (`004_persist_replay_step.sql`) now
+persists via the same UPSERT.
+- `sync_from_db()` additionally resets `wrapped.clock` to the persisted
+  step, when one exists.
+- `persist()` additionally writes `wrapped.clock.current()`.
+- Freeze semantics are unchanged: `'stale'` still no-ops `advance()`, so a
+  frozen clock simply persists the same frozen value tick after tick — this
+  fix only changes what happens at startup, not the freeze/recover
+  mechanism itself.
 """
 
 from dataclasses import dataclass, field
@@ -127,11 +148,12 @@ class FaultInjectingProvider:
         self.frozen_at = datetime.now(timezone.utc) if mode in ("outage", "stale") else None
 
     async def sync_from_db(self, pool: asyncpg.Pool) -> None:
-        """Hydrates `mode`/`frozen_at`/`last_successful_fetch` from the
-        persisted provider_state row — called once at startup so fault mode
-        AND freshness age correctly survive a process restart."""
+        """Hydrates `mode`/`frozen_at`/`last_successful_fetch`/replay step
+        from the persisted provider_state row — called once at startup so
+        fault mode, freshness age, AND replay position correctly survive a
+        process restart."""
         row = await pool.fetchrow(
-            "SELECT mode, frozen_at, last_successful_fetch FROM provider_state WHERE id = 1"
+            "SELECT mode, frozen_at, last_successful_fetch, replay_step FROM provider_state WHERE id = 1"
         )
         if row is None:
             return
@@ -142,10 +164,18 @@ class FaultInjectingProvider:
             self.last_successful_fetch = row["last_successful_fetch"]
         # else: no persisted value yet (very first startup) — keep the
         # in-memory default (now()).
+        if row["replay_step"] is not None:
+            self.wrapped.clock.reset(row["replay_step"])
+        # else: no persisted step yet (very first startup) — keep whatever
+        # start_step the caller constructed `wrapped.clock` with.
 
     async def persist(self, pool: asyncpg.Pool) -> None:
-        """Writes current mode/frozen_at/last_successful_fetch to
+        """Writes current mode/frozen_at/last_successful_fetch/replay step to
         provider_state. Called on every /admin/fault change and on every
-        scheduler tick, so a restart's freshness-age precision loss is
-        bounded by one scheduler interval, not unbounded."""
-        await save_provider_state(pool, self.mode, self.frozen_at, self.last_successful_fetch)
+        scheduler tick, so a restart's freshness-age precision loss AND
+        replay-position loss are both bounded by one scheduler interval, not
+        unbounded."""
+        await save_provider_state(
+            pool, self.mode, self.frozen_at, self.last_successful_fetch,
+            self.wrapped.clock.current(),
+        )

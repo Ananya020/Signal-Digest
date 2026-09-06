@@ -45,7 +45,7 @@ export function DemoControls({ status, onChanged }: { status: ProviderStatus | n
   }
 
   return (
-    <div ref={rootRef} className="relative">
+    <div ref={rootRef} data-tour="demo-controls" className="relative">
       <button
         onClick={() => setOpen((o) => !o)}
         aria-label="Demo controls"

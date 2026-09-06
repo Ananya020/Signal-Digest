@@ -42,6 +42,7 @@ export function FreshnessBanner({ status }: { status: ProviderStatus | null }) {
 
   return (
     <div
+      data-tour="freshness"
       className="flex items-center gap-3 rounded-md bg-surface-subtle px-3 py-2 transition-colors duration-300"
       role="status"
       aria-live="polite"

@@ -102,7 +102,6 @@ psql "<the External Database URL>" -c "SELECT count(*) FROM baselines;"   # one 
    ```
    This does a real `SELECT 1` round-trip against Postgres (`backend/app/routers/health.py`) — a genuine DB outage will make this genuinely fail, not just report a cached "ok," so Render's health-check-based auto-restart logic will behave correctly if the app truly goes unhealthy. If you configure a Render health check path, point it at `/health`.
 
----
 
 ## 4. Deploy the frontend to Vercel
 

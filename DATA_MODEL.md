@@ -88,11 +88,14 @@ flag_ack_history (
 provider_state (
   id INT PRIMARY KEY DEFAULT 1, mode TEXT NOT NULL DEFAULT 'normal', frozen_at TIMESTAMPTZ,
   last_successful_fetch TIMESTAMPTZ,  -- added migrations/002 (Phase 4 correction, see below)
+  replay_step INTEGER,  -- added migrations/004 (deployment-prep correction, see below)
   updated_at TIMESTAMPTZ
 )
 ```
 
 **Correction made during Phase 4 implementation (2026-09-04):** `last_successful_fetch` was added after an empirically-verified bug — freshness state depends entirely on `age = now - last_successful_fetch` (`frozen_at` is cosmetic, only used in status `detail`), so the original schema (mode/frozen_at only) meant a process restart during a genuine `stale` fault reset the age clock and incorrectly reported `LIVE` immediately after. `outage` was unaffected (its `UNAVAILABLE` state never consults `age_seconds`). See PROGRESS.md / ARCHITECTURE.md for the fix and verification.
+
+**Correction made during deployment prep (2026-09-06) — second instance of the same bug class, found on the real deployed instance, not locally:** `HistoricalReplayProvider`'s `ReplayClock` (the replay position) was process-memory only, exactly like `last_successful_fetch` before its Phase 4 fix. On Render's free tier, a spin-down/wake (or any restart/redeploy) reset the replay position to the beginning of history — the scheduler silently re-walked from day one, meaning no new flags got scored for ~20+ ticks while `sample_size` re-climbed past the confidence gate, even though previously-computed flags remained correctly stored and unaffected. Fixed the same way: `replay_step` added (`migrations/004_persist_replay_step.sql`), persisted via the same UPSERT as `mode`/`frozen_at`/`last_successful_fetch`, hydrated at startup by `FaultInjectingProvider.sync_from_db()` (resets `wrapped.clock` to the persisted value) and written every scheduler tick by `persist()`. Freeze semantics (`'stale'` no-ops `advance()`) are unaffected — this only changes what happens at startup. Verified empirically with a real hard-kill (`SIGKILL`, not graceful shutdown) against a running instance: replay resumed from the persisted step, not from zero. See PROGRESS.md.
 
 ## Why each table exists
 - `price_ticks` — immutable source of truth, needed to recompute anything after fault-recovery.

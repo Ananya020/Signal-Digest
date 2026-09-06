@@ -58,6 +58,26 @@ def test_replay_exhausted_returns_no_ticks_and_unavailable_status():
     assert provider.get_status().state == "UNAVAILABLE"
 
 
+def test_replay_clock_reset_resumes_from_persisted_step():
+    """ReplayClock.reset() is what restart-resumption relies on (see
+    FaultInjectingProvider.sync_from_db) — confirm it actually repositions
+    current()/get_ticks(), not just the raw counter."""
+    history = make_history("X.NS", [100.0, 105.0, 110.0])
+    provider = HistoricalReplayProvider(history=history, clock=ReplayClock())
+
+    clock = provider.clock
+    clock.advance()
+    clock.advance()
+    assert clock.current() == 2
+
+    # Simulate a fresh process reading a persisted step back in.
+    fresh_clock = ReplayClock()
+    fresh_clock.reset(2)
+    fresh_provider = HistoricalReplayProvider(history=history, clock=fresh_clock)
+
+    assert fresh_provider.get_ticks(["X.NS"])[0].price == 110.0
+
+
 def test_multiple_tickers_advance_in_lockstep():
     history = {
         **make_history("A.NS", [1.0, 2.0]),

@@ -194,3 +194,77 @@ async def test_restart_during_outage_remains_unavailable(db_pool):
     assert provider2.get_status().state == "UNAVAILABLE"
 
     await save_provider_state(db_pool, "normal", None, None)
+
+
+async def test_replay_step_persists_and_resumes_across_simulated_restart(db_pool):
+    """Second instance of the last_successful_fetch bug class (found on the
+    real deployed instance, not locally): the replay position must survive a
+    restart too, not just fault mode/freshness. provider1 advances a few
+    ticks and persists; a brand-new provider2 must resume from that step,
+    not from the beginning of history."""
+    provider1 = make_provider(prices=(100.0, 105.0, 110.0, 115.0, 120.0))
+    provider1.advance()  # step 1 -> 2
+    provider1.advance()  # step 2 -> 3
+    await provider1.persist(db_pool)
+
+    provider2 = make_provider(prices=(100.0, 105.0, 110.0, 115.0, 120.0))
+    await provider2.sync_from_db(db_pool)
+
+    assert provider2.wrapped.clock.current() == 3
+    assert provider2.get_ticks(["X.NS"])[0].price == 115.0  # step 3's value, not step 1's
+
+    await save_provider_state(db_pool, "normal", None, None, None)
+
+
+async def test_replay_step_persist_does_not_disturb_mode_or_freshness(db_pool):
+    """Regression: adding replay_step to the same UPSERT must not regress the
+    existing mode/last_successful_fetch persistence — re-run of the original
+    restart scenario, now also asserting the replay step round-trips
+    alongside it."""
+    long_ago = datetime.now(timezone.utc) - timedelta(minutes=5)
+    provider1 = make_provider()
+    provider1.last_successful_fetch = long_ago
+    provider1.set_mode("stale")
+    provider1.advance()  # no-op, frozen
+    await provider1.persist(db_pool)
+
+    provider2 = make_provider()
+    await provider2.sync_from_db(db_pool)
+
+    assert provider2.get_status().state == "STALE"
+    assert provider2.wrapped.clock.current() == 1  # persisted step round-tripped
+
+    await save_provider_state(db_pool, "normal", None, None, None)
+
+
+async def test_save_provider_state_old_call_signature_still_works_unchanged(db_pool):
+    """Genuine backward-compatibility proof for replay_step's addition: calls
+    the function with the EXACT pre-fix call shape (positional mode/frozen_at/
+    last_successful_fetch, no replay_step argument present at all — not
+    replay_step=None passed explicitly, which only proves None-handling, a
+    weaker claim). Every real pre-existing call site in this codebase
+    (test_admin_and_provider_api.py, and this file's mode/freshness tests
+    above) already calls it this way; this test pins that shape down
+    explicitly so a future signature change can't silently break it."""
+    fetched_at = datetime.now(timezone.utc)
+    await save_provider_state(db_pool, "outage", fetched_at, fetched_at)  # no replay_step arg
+
+    row = await load_provider_state(db_pool)
+    assert row["mode"] == "outage"
+    assert row["replay_step"] is None  # column exists but old caller never set it
+
+    await save_provider_state(db_pool, "normal", None, None)  # also old-shape, no replay_step
+
+
+async def test_fresh_deployment_with_no_persisted_step_keeps_default_start(db_pool):
+    """No provider_state row yet (very first startup) must not crash
+    sync_from_db, and must leave the caller-constructed start_step alone —
+    matches the existing behavior for last_successful_fetch's None case."""
+    await db_pool.execute("DELETE FROM provider_state WHERE id = 1")
+
+    provider = make_provider()  # constructed with start_step=1, as main.py does
+    await provider.sync_from_db(db_pool)
+
+    assert provider.wrapped.clock.current() == 1  # unchanged, not reset to 0
+
+    await save_provider_state(db_pool, "normal", None, None, None)
