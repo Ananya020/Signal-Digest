@@ -225,6 +225,66 @@ npm run test:e2e
 
 It resets demo state, fast-forwards real scoring, loads the dashboard, opens evidence, acknowledges a flag, triggers outage/recovery, finds a real not-yet-reached escalation candidate and seeds the precondition, waits for the live scheduler to naturally correct it, and asserts Today's Brief reflects the real post-escalation state — verified passing across multiple real runs, ~34s each.
 
+## 🧭 How to Explore Signal Digest
+
+If you're reviewing this live rather than watching the demo video, here's a self-guided path through everything that matters — takes about 5 minutes.
+
+### 1. Land on the digest → [signal-digest-ruby.vercel.app](https://signal-digest-ruby.vercel.app/)
+
+You'll see a ranked list of signals — each is a real stock move that's statistically unusual *for that specific stock*, not against a flat threshold.
+
+Notice the freshness indicator in the top-right; it reflects real elapsed time since the last data fetch, not a fixed timer.
+
+### 2. Take the guided tour *(optional, top nav)*
+
+A short, manually-triggered walkthrough pointing at each part of the UI — freshness, Today's Brief, severity badges, evidence, and watchlist.
+
+It never launches automatically; it only appears if you click it.
+
+### 3. Open "Show evidence" on any signal
+
+This is the core engineering claim made visible: the actual mean, standard deviation, and z-score calculation behind the flag — not a black-box score.
+
+The displayed z-score is algebraically reproducible from the displayed mean/stdev; nothing here is decorative.
+
+### 4. Acknowledge a signal
+
+Click **"Acknowledge."** It disappears from the active list.
+
+This isn't just a UI toggle — it snapshots the signal's current severity, which matters for Step 6.
+
+### 5. Trigger a live outage *(top nav → Demo)*
+
+Click **"Inject outage."** Watch the freshness banner flip to `UNAVAILABLE` in real time.
+
+This is the *exact same code path* a real data provider failure would hit, not a scripted demo state.
+
+Existing signals stay visible, clearly marked as stale; nothing new gets computed while the feed is down.
+
+### 6. Recover, and watch for an escalation
+
+Click **"Recover."** The live scheduler resumes.
+
+If a previously-acknowledged signal has genuinely worsened since you dismissed it, it reappears — unacknowledged — with a visible delta:
+
+> `2.7σ → 4.6σ, HIGH → EXTREME`
+
+That resurfacing is deliberate: **worse-than-dismissed is new information; better-than-dismissed isn't.**
+
+### 7. Check the "About" panel
+
+A short, honest summary of the product's core logic and design citations — written for someone who wants the thesis without reading the full README.
+
+### 8. *(Optional)* Add a stock
+
+Search any of the ~34 seeded NSE tickers and add it to the watchlist.
+
+This confirms it's a real, working watchlist — not just a fixed demo dataset.
+
+---
+
+> **⚠️ Note:** This is a shared public instance with no per-visitor isolation. If you trigger fault injection, other people viewing the site at that moment will see it too. It recovers on its own within a few scheduler cycles either way.
+
 ## 12. Known Limitations
 
 - `volatility_regime` is computed and stored but not surfaced in the digest — see [§5](#5-the-meaningful-change-algorithm).
