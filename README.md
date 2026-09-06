@@ -1,6 +1,6 @@
 <div align="center">
 
-# 📊 Signal Digest
+#  Signal Digest
 
 **A watchlist that flags what's actually unusual — for *that specific stock* — not what always jitters.**
 
